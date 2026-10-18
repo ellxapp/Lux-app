@@ -90,6 +90,16 @@ table.lv, table.res { border-collapse: collapse; width: 100%; font-size: 12px; m
 .go { width: 100%; padding: 10px; font-size: 15px; font-weight: 600; background: #3e42a6; color: #8dff9e; border-color: #b4b8f2; letter-spacing: .1em; }
 #mReq { color: #9fd0ff; } #mReq:disabled { opacity: .75; }
 html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; height: 100%; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* clearance colours: heading amber, level cyan, speed pink, direct-to violet */
+.c-hdg { --c: #ffb347; --cb: rgba(255,179,71,.28); } .c-lvl { --c: #6fe0ff; --cb: rgba(111,224,255,.26); }
+.c-spd { --c: #ff8fd6; --cb: rgba(255,143,214,.26); } .c-dct { --c: #c7b2ff; --cb: rgba(199,178,255,.28); }
+.mrow.c-hdg, .mrow.c-lvl, .mrow.c-spd, .mrow.c-dct { border-left: 3px solid var(--c); padding-left: 5px; margin-left: -8px; }
+.mrow[class*="c-"] .ml, .qw[class*="c-"] .qh { color: var(--c); font-weight: 600; }
+.mrow[class*="c-"] button, .qw[class*="c-"] button, .qcol button.fx { background: #15172a; color: var(--c); border-color: color-mix(in srgb, var(--c) 50%, transparent); }
+.mrow[class*="c-"] button[aria-pressed="true"], .qw[class*="c-"] button[aria-pressed="true"] { background: var(--cb); color: #fff; border-color: var(--c); }
+.qw[class*="c-"] { border-top: 3px solid var(--c); padding-top: 3px; }
+.qcol button.fx { --c: #c7b2ff; }
+#mh { border-color: #ffb347; color: #ffb347; }
 .go.alt { background: transparent; color: #c9ccf5; margin-bottom: 8px; font-size: 13px; }
 .best { line-height: 1.6; color: #ffd36b; font-size: 12px; margin-top: 10px; text-align: center; }
 .help { position: absolute; z-index: 7; right: max(10px, env(safe-area-inset-right, 0px)); top: 10px; width: 380px; max-width: calc(100% - 20px);
@@ -101,7 +111,7 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
 .qw { display: flex; flex-direction: column; }
 .qh { color: #c9ccf5; font-size: 10px; letter-spacing: .08em; padding: 0 2px 3px; }
 .qcol { display: flex; flex-direction: column; gap: 2px; max-height: 230px; overflow-y: auto; }
-.qcol button { padding: 4px 9px; text-align: left; min-width: 58px; } .qcol button.fx { color: #9fd0ff; }
+.qcol button { padding: 4px 9px; text-align: left; min-width: 58px; } 
 .cmd { position: absolute; z-index: 6; left: 50%; transform: translateX(-50%); bottom: 12px; width: min(340px, calc(100% - 20px));
   font: inherit; font-size: 14px; padding: 6px 10px; background: #10121c; color: #ffd36b; border: 1px solid #ffd36b; text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -116,12 +126,12 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
     <input class="cmd" id="cmd" hidden autocomplete="off" spellcheck="false" aria-label="Command" placeholder="H270  F110  A40  S200  D BREDI  I  T  X">
     <div class="menu" id="menu" hidden>
       <div class="mh"><b id="mcs"></b><span id="minfo"></span><button id="mx" aria-label="Close">✕</button></div>
-      <div class="mrow"><span class="ml">HDG</span>
+      <div class="mrow c-hdg"><span class="ml">HDG</span>
         <button data-h="-5">−5</button><input id="mh" inputmode="numeric" maxlength="3" aria-label="Heading, magnetic"><button data-h="5">+5</button>
         <button id="mL">LEFT</button><button id="mF">FLY</button><button id="mR">RIGHT</button></div>
-      <div class="mrow"><span class="ml">LVL</span><div class="mb" id="mLvl"></div></div>
-      <div class="mrow"><span class="ml">SPD</span><div class="mb" id="mSpd"></div></div>
-      <div class="mrow"><span class="ml">DCT</span><div class="mb" id="mDct"></div></div>
+      <div class="mrow c-lvl"><span class="ml">LVL</span><div class="mb" id="mLvl"></div></div>
+      <div class="mrow c-spd"><span class="ml">SPD</span><div class="mb" id="mSpd"></div></div>
+      <div class="mrow c-dct"><span class="ml">DCT</span><div class="mb" id="mDct"></div></div>
       <div class="mrow act"><button id="mReq">REQ HIGHER XFL</button><button id="mIls">CLEARED ILS</button><button id="mXfr">TRANSFER</button><button id="mLbl">AUTO LABEL</button></div>
     </div>
 
@@ -1465,7 +1475,7 @@ function openPick(a, kind, x, y) {
     dctFixes(a).forEach(f => C.appendChild(btn(f, false, () => { issue(a, 'dct', f, q => cmdDirect(a, f, q)); if (a.ui) delete a.ui.hdg; }, 'fx')));
     cols.push(['LEFT', L], ['FLY / DCT', C], ['RIGHT', R]);
   }
-  cols.forEach(([t, c]) => { const w = document.createElement('div'); w.className = 'qw'; const h = document.createElement('div'); h.className = 'qh'; h.textContent = t; w.append(h, c); pickEl.appendChild(w); });
+  cols.forEach(([t, c]) => { const w = document.createElement('div'); w.className = 'qw ' + ({ LVL: 'c-lvl', SPD: 'c-spd', LEFT: 'c-hdg', RIGHT: 'c-hdg', 'FLY / DCT': 'c-hdg' }[t] || ''); const h = document.createElement('div'); h.className = 'qh'; h.textContent = t; w.append(h, c); pickEl.appendChild(w); });
   pickEl.hidden = false;
   const sc = $('scopeBox').getBoundingClientRect(), pw = pickEl.offsetWidth, ph = pickEl.offsetHeight;
   pickEl.style.left = clamp(x - pw / 2, 6, sc.width - pw - 6) + 'px'; pickEl.style.top = clamp(y + 10, 6, sc.height - ph - 6) + 'px';
