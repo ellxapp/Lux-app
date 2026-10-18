@@ -1185,6 +1185,8 @@ function loop(ts) {
 const mapCv = document.createElement('canvas'), mctx = mapCv.getContext('2d'), sctx = g;
 let mapDirty = true, HITS = [];
 function render() {
+  const rr = cv.getBoundingClientRect();
+  if (Math.abs(rr.width - Wpx) > 0.5 || Math.abs(rr.height - Hpx) > 0.5 || (window.devicePixelRatio || 1) !== DPR) { resize(); mapDirty = true; }
   if (mapDirty) {
     mapCv.width = cv.width; mapCv.height = cv.height;
     g = mctx; draw(); g = sctx; mapDirty = false;
@@ -1352,15 +1354,16 @@ function updHud() {
   else { $('hScoreL').textContent = GS.free ? 'FREE PLAY ·' : 'SCORE';
     $('hTime').textContent = GS.free ? '+' + fmtClock(GS.t - SESSION) : fmtClock(Math.max(0, SESSION - GS.t)); }
 }
-function hitTest(x, y) {
+function hitTest(x, y, touch) {
+  const pad = touch ? 8 : 0, rad = touch ? 26 : 12;
   for (let i = HITS.length - 1; i >= 0; i--) {
     const h = HITS[i], b = h.box;
-    if (x >= b.x - 3 && x <= b.x + b.w + 3 && y >= b.y - 2 && y <= b.y + b.h + 3) {
-      const f = h.fields.find(q => x >= q.x && x <= q.x + q.w && y >= q.y && y <= q.y + q.h);
+    if (x >= b.x - 3 - pad && x <= b.x + b.w + 3 + pad && y >= b.y - 2 - pad && y <= b.y + b.h + 3 + pad) {
+      const f = h.fields.find(q => x >= q.x - pad / 2 && x <= q.x + q.w + pad / 2 && y >= q.y - pad / 4 && y <= q.y + q.h + pad / 4);
       return { a: h.a, f: f ? f.k : 'lbl', box: b, sx: h.sx, sy: h.sy };
     }
   }
-  for (let i = HITS.length - 1; i >= 0; i--) { const h = HITS[i]; if (Math.hypot(x - h.sx, y - h.sy) < 12) return { a: h.a, f: 'blip', sx: h.sx, sy: h.sy }; }
+  for (let i = HITS.length - 1; i >= 0; i--) { const h = HITS[i]; if (Math.hypot(x - h.sx, y - h.sy) < rad) return { a: h.a, f: 'blip', sx: h.sx, sy: h.sy }; }
   return null;
 }
 const menu = $('menu');
@@ -1477,7 +1480,7 @@ const ptrs = new Map(); let pinch0 = null, down = null;
 const rel = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
-  const [x, y] = rel(e); down = { x: e.clientX, y: e.clientY, moved: false, hit: hitTest(x, y), lx: x, ly: y };
+  const [x, y] = rel(e), touch = e.pointerType !== 'mouse'; down = { x: e.clientX, y: e.clientY, moved: false, hit: hitTest(x, y, touch), lx: x, ly: y, tol: touch ? 14 : 5 };
   const rh = RBHITS.find(h => x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h);
   if (rh) { down.rbDel = rh.r; return; }
   if (st.rb && ptrs.size === 1) down.rb = rbAnchor(x, y);
@@ -1489,7 +1492,7 @@ cv.addEventListener('pointermove', e => {
     const h = hitTest(x, y); GS.hover = h; cv.style.cursor = st.rb ? 'crosshair' : h ? (h.f === 'blip' ? 'crosshair' : 'pointer') : ''; return;
   }
   const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
-  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) down.moved = true;
+  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > down.tol) down.moved = true;
   if (ptrs.size === 2) { GS.rbDraft = null; if (down) down.rb = null; const [p, q] = [...ptrs.values()]; const d = Math.hypot(p[0] - q[0], p[1] - q[1]); if (pinch0) zoom(d / pinch0); pinch0 = d; if (down) { down.moved = true; down.hit = null; } GS.drag = null; return; }
   if (!down || !down.moved) return;
   if (down.rb) { GS.rbDraft = { a: down.rb, b: { p: unS([x, y]) } }; return; }
