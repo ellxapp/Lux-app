@@ -143,7 +143,7 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
         </table>
         <button class="go" id="start">START</button>
         <div class="best" id="bests"></div>
-        <p class="fine">A game based on the published ELLX procedures, simplified and more forgiving than real operations. Not for operational or training use. No wind. Radar picture updates every 4 seconds; pilots react 4 seconds after an instruction.</p>
+        <p class="fine">A game based on the published ELLX procedures, simplified and more forgiving than real operations. Not for operational or training use. No wind. Radar picture updates every 4 seconds; pilots read back at once and act 4 seconds later.</p>
       </div>
     </div>
 
@@ -1069,23 +1069,29 @@ function checks() {
 }
 
 // ---- commands ----
-function cmdHeading(a, magHdg, dir) {
+// p: 'rb' = check and read back now, 'do' = carry out (4 s later), undefined = both at once
+function cmdHeading(a, magHdg, dir, p) {
   const h = ((Math.round(magHdg) % 360) + 360) % 360 || 360;
+  if (p !== 'do') say(a, `${dir < 0 ? 'Left heading' : dir > 0 ? 'Right heading' : 'Heading'} ${pad3(h)}, ${a.cs}.`);
+  if (p === 'rb') return;
   a.mode = 'hdg'; a.hdgSel = norm(h + MAGVAR); a.turnDir = dir; a.attn = false; a.vnav = false; a.caAlt = 0;
   if (a.kind === 'arr' && a.gsCap) a.gsCap = false;
-  say(a, `${dir < 0 ? 'Left heading' : dir > 0 ? 'Right heading' : 'Heading'} ${pad3(h)}, ${a.cs}.`);
 }
-function cmdLevel(a, ft) {
+function cmdLevel(a, ft, p) {
+  if (p !== 'do') { const verb = ft > a.alt + 50 ? 'Climb' : ft < a.alt - 50 ? 'Descend' : 'Maintain'; say(a, `${verb} ${sayLvl(ft)}, ${a.cs}.`); }
+  if (p === 'rb') return;
   a.cfl = ft; a.attn = false; a.vnav = false;     // a new level cancels 'descend via the profile'
-  const verb = ft > a.alt + 50 ? 'Climb' : ft < a.alt - 50 ? 'Descend' : 'Maintain';
-  say(a, `${verb} ${sayLvl(ft)}, ${a.cs}.`);
 }
-function cmdSpeed(a, kt) {
-  const pf = perf(a.type); a.attn = false;
-  if (kt && kt < pf.vmin) return say(a, `Unable ${kt} knots, minimum clean ${pf.vmin}, ${a.cs}.`, 'warn');
-  a.tgtIas = kt; say(a, kt ? `Speed ${kt} knots, ${a.cs}.` : `Resume own speed, ${a.cs}.`);
+function cmdSpeed(a, kt, p) {
+  const pf = perf(a.type);
+  if (kt && kt < pf.vmin) { if (p !== 'do') say(a, `Unable ${kt} knots, minimum clean ${pf.vmin}, ${a.cs}.`, 'warn'); return false; }
+  if (p !== 'do') say(a, kt ? `Speed ${kt} knots, ${a.cs}.` : `Resume own speed, ${a.cs}.`);
+  if (p === 'rb') return;
+  a.tgtIas = kt; a.attn = false;
 }
-function cmdDirect(a, fix) {
+function cmdDirect(a, fix, p) {
+  if (p !== 'do') say(a, `Direct ${fix}, ${a.cs}.`);
+  if (p === 'rb') return;
   a.attn = false;
   // a fix on the aircraft's remaining route: rejoin the route there
   const idx = a.route ? a.route.indexOf(fix) : -1;
@@ -1100,36 +1106,34 @@ function cmdDirect(a, fix) {
   else { a.mode = 'direct'; a.directFix = fix; a.vnav = false; }
   if (a.mode === 'route' && a.clearedILS) a.vnav = true;
   a.turnDir = 0; a.hdgSel = null; a.legTurn = 0; a.caAlt = 0;
-  say(a, `Direct ${fix}, ${a.cs}.`);
 }
-function cmdILS(a) {
+function cmdILS(a, p) {
+  if (p !== 'do') {
+    if (a.mode === 'route') {
+      const via = a.route.slice(a.ri).find(n => VIA_PTS[st.rwy].includes(n)) || a.route[a.ri];
+      say(a, `Cleared ILS Z runway ${st.rwy} via ${via}, ${a.cs}.`);
+    } else say(a, `Cleared ILS runway ${st.rwy}, ${a.cs}.`);
+  }
+  if (p === 'rb') return;
   a.attn = false; a.clearedILS = true;
-  if (a.mode === 'route') {                          // ILS Z via the next IAF/IF: includes descent on the published profile
-    const via = a.route.slice(a.ri).find(n => VIA_PTS[st.rwy].includes(n)) || a.route[a.ri];
-    a.vnav = true; a.cfl = 3000;
-    say(a, `Cleared ILS Z runway ${st.rwy} via ${via}, ${a.cs}.`);
-  } else say(a, `Cleared ILS runway ${st.rwy}, ${a.cs}.`);
+  if (a.mode === 'route') { a.vnav = true; a.cfl = 3000; }   // ILS Z via the next IAF/IF: descent on the published profile
 }
-function cmdTransfer(a) {
-  if (a.transferred) return;
+function cmdTransfer(a, p) {
+  if (a.transferred) return false;
+  if (a.kind === 'arr' && !(a.mode === 'loc' && a.estab && a.gsCap)) { if (p !== 'do') say(a, `${a.cs}, not yet established on the ILS.`, 'warn'); return false; }
+  if (p !== 'do') say(a, a.kind === 'arr' ? `Tower 118.105, ${a.cs}.` : `Next frequency, ${a.cs}.`);
+  if (p === 'rb') return;
+  a.transferred = true; a.attn = false;
   if (a.kind === 'arr') {
-    if (!(a.mode === 'loc' && a.estab && a.gsCap)) return say(a, `${a.cs}, not yet established on the ILS.`, 'warn');
     const s = finalGeom(a).s;
-    a.transferred = true; a.attn = false;
-    say(a, `Tower 118.105, ${a.cs}.`);
     if (s < 4) addScore(-25, 'late', `${a.cs} transferred to TWR late, at ${s.toFixed(1)} NM (inside 4 NM).`);
     else if (s <= 12) addScore(50, 'arrOk', `${a.cs} handed to TWR at ${s.toFixed(1)} NM.`);
     else addScore(25, 'arrOk', `${a.cs} handed to TWR at ${s.toFixed(1)} NM (best between 4 and 12 NM).`);
   } else if (a.kind === 'dep') {
-    a.transferred = true; a.attn = false; a.nextUnitT = GS.t + 20 + Math.random() * 25;
-    say(a, `Next frequency, ${a.cs}.`);
+    a.nextUnitT = GS.t + 20 + Math.random() * 25;
     if (a.cfl >= (a.xfl0 || a.xfl) || (a.slope && a.cfl === 10000)) addScore(50, 'depOk', `${a.cs} transferred, cleared to ${fmtLvl(a.cfl)}.`);
     else addScore(25, 'depOk', `${a.cs} transferred below its exit level ${fmtLvl(a.xfl0 || a.xfl)}.`);
-  } else {
-    a.transferred = true; a.attn = false;
-    say(a, `Next frequency, ${a.cs}.`);
-    addScore(25, 'trnOk', `${a.cs} transit transferred.`);
-  }
+  } else addScore(25, 'trnOk', `${a.cs} transit transferred.`);
 }
 
 // ---- main loop ----
@@ -1142,9 +1146,11 @@ function sweepAc(a) {
 }
 // ---- pilot reaction: instructions are carried out (and read back) 4 s after they are given ----
 function issue(a, key, val, fn) {
+  if (key === 'xfr' && (a.transferred || ui(a, 'xfr', false))) return;
+  if (fn('rb') === false) return;                   // read back at once (or say unable)
   a.attn = false; a.ui = a.ui || {};
   if (key) a.ui[key] = val;
-  (a.pending = a.pending || []).push({ t: GS.t + PILOT_DELAY, key, fn });
+  (a.pending = a.pending || []).push({ t: GS.t + PILOT_DELAY, key, fn: () => fn('do') });   // act 4 s later
 }
 function runPending(a) {
   if (!a.pending || !a.pending.length) return;
@@ -1377,15 +1383,17 @@ function openMenu(a) {
   const lv = a.kind === 'arr' ? [3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 13000, 14000, 15000, 16000]
     : a.kind === 'dep' ? depLevels(a)
     : [6000, 7000, 8000, 9000, 10000, 11000, 12000, 13000, 14000, 15000, 16000];
-  fillBtns('mLvl', lv.map(f => [fmtLvl(f), () => issue(a, 'cfl', f, () => cmdLevel(a, f)), f === ui(a, 'cfl', a.cfl)]));
+  fillBtns('mLvl', lv.map(f => [fmtLvl(f), () => issue(a, 'cfl', f, q => cmdLevel(a, f, q)), f === ui(a, 'cfl', a.cfl)]));
   const sp = [160, 170, 180, 190, 200, 210, 220, 230, 240, 250].filter(k => k >= pf.vmin);
   const cs_ = ui(a, 'spd', a.tgtIas);
-  fillBtns('mSpd', sp.map(k => [String(k), () => issue(a, 'spd', k, () => cmdSpeed(a, k)), cs_ === k]).concat([['OWN', () => issue(a, 'spd', null, () => cmdSpeed(a, null)), cs_ == null]]));
+  fillBtns('mSpd', sp.map(k => [String(k), () => issue(a, 'spd', k, q => cmdSpeed(a, k, q)), cs_ === k]).concat([['OWN', () => issue(a, 'spd', null, q => cmdSpeed(a, null, q)), cs_ == null]]));
   const fixes = dctFixes(a);
-  fillBtns('mDct', fixes.map(f => [f, () => { issue(a, 'dct', f, () => cmdDirect(a, f)); if (a.ui) delete a.ui.hdg; }, ui(a, 'dct', a.mode === 'direct' ? a.directFix : null) === f]));
+  fillBtns('mDct', fixes.map(f => [f, () => { issue(a, 'dct', f, q => cmdDirect(a, f, q)); if (a.ui) delete a.ui.hdg; }, ui(a, 'dct', a.mode === 'direct' ? a.directFix : null) === f]));
   $('mIls').hidden = a.kind !== 'arr'; $('mIls').textContent = `CLEARED ILS ${st.rwy}`;
   $('mIls').setAttribute('aria-pressed', !!ui(a, 'ils', a.clearedILS));
-  $('mXfr').textContent = a.kind === 'arr' ? 'TWR 118.105' : 'TRANSFER';
+  const xf = a.transferred || ui(a, 'xfr', false);
+  $('mXfr').textContent = xf ? (a.kind === 'arr' ? 'WITH TWR' : 'TRANSFERRED') : a.kind === 'arr' ? 'TWR 118.105' : 'TRANSFER';
+  $('mXfr').disabled = !!xf; $('mXfr').setAttribute('aria-pressed', !!xf);
   const rq = $('mReq'); rq.hidden = a.kind !== 'dep' || a.transferred;
   rq.textContent = a.xflUp ? `XFL ${sayLvl(a.xfl)} APPROVED` : a.xflReqT ? 'XFL REQUESTED…' : `REQ HIGHER XFL (${(NEXT_UNIT[a.exit] || ['Brussels'])[0]})`;
   rq.disabled = !!(a.xflUp || a.xflReqT);
@@ -1413,13 +1421,13 @@ const hdgVal = () => { const v = parseInt($('mh').value, 10); return isNaN(v) ? 
 document.querySelectorAll('[data-h]').forEach(b => b.onclick = () => {
   const v = hdgVal() ?? 360; $('mh').value = pad3(((v + +b.dataset.h) % 360 + 360) % 360 || 360);
 });
-$('mL').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.sel; issue(a, 'hdg', v, () => cmdHeading(a, v, -1)); if (a.ui) delete a.ui.dct; refreshMenu(); } };
-$('mR').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.sel; issue(a, 'hdg', v, () => cmdHeading(a, v, 1)); if (a.ui) delete a.ui.dct; refreshMenu(); } };
-$('mF').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.sel; issue(a, 'hdg', v, () => cmdHeading(a, v, 0)); if (a.ui) delete a.ui.dct; refreshMenu(); } };
+$('mL').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.sel; issue(a, 'hdg', v, q => cmdHeading(a, v, -1, q)); if (a.ui) delete a.ui.dct; refreshMenu(); } };
+$('mR').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.sel; issue(a, 'hdg', v, q => cmdHeading(a, v, 1, q)); if (a.ui) delete a.ui.dct; refreshMenu(); } };
+$('mF').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.sel; issue(a, 'hdg', v, q => cmdHeading(a, v, 0, q)); if (a.ui) delete a.ui.dct; refreshMenu(); } };
 $('mh').addEventListener('keydown', e => { if (e.key === 'Enter') $('mF').click(); });
 $('mReq').onclick = () => { const a = GS.sel; if (a) { cmdReqXfl(a); refreshMenu(); } };
-$('mIls').onclick = () => { const a = GS.sel; if (a) { issue(a, 'ils', true, () => cmdILS(a)); refreshMenu(); } };
-$('mXfr').onclick = () => { const a = GS.sel; if (a) { issue(a, null, null, () => cmdTransfer(a)); refreshMenu(); } };
+$('mIls').onclick = () => { const a = GS.sel; if (a) { issue(a, 'ils', true, q => cmdILS(a, q)); refreshMenu(); } };
+$('mXfr').onclick = () => { const a = GS.sel; if (a) { issue(a, 'xfr', true, q => cmdTransfer(a, q)); refreshMenu(); } };
 $('mLbl').onclick = () => { if (GS.sel) GS.sel.lblPin = null; };
 
 // ---- quick pickers on label fields ----
@@ -1436,25 +1444,25 @@ function openPick(a, kind, x, y) {
     const lv = a.kind === 'arr' ? [16000, 15000, 14000, 13000, 12000, 11000, 10000, 9000, 8000, 7000, 6000, 5000, 4000, 3000]
       : a.kind === 'dep' ? depLevels(a).reverse() : [16000, 15000, 14000, 13000, 12000, 11000, 10000, 9000, 8000, 7000, 6000];
     const c = document.createElement('div'); c.className = 'qcol';
-    lv.forEach(f => c.appendChild(btn(fmtLvl(f) + (a.kind === 'dep' && f === a.xfl ? ' X' : ''), f === cur, () => issue(a, 'cfl', f, () => cmdLevel(a, f)))));
+    lv.forEach(f => c.appendChild(btn(fmtLvl(f) + (a.kind === 'dep' && f === a.xfl ? ' X' : ''), f === cur, () => issue(a, 'cfl', f, q => cmdLevel(a, f, q)))));
     cols.push(['LVL', c]);
   } else if (kind === 'spd') {
     const cur = ui(a, 'spd', a.tgtIas), c = document.createElement('div'); c.className = 'qcol';
-    [250, 240, 230, 220, 210, 200, 190, 180, 170, 160].filter(k => k >= pf.vmin).forEach(k => c.appendChild(btn(String(k), k === cur, () => issue(a, 'spd', k, () => cmdSpeed(a, k)))));
-    c.appendChild(btn('OWN', cur == null, () => issue(a, 'spd', null, () => cmdSpeed(a, null))));
+    [250, 240, 230, 220, 210, 200, 190, 180, 170, 160].filter(k => k >= pf.vmin).forEach(k => c.appendChild(btn(String(k), k === cur, () => issue(a, 'spd', k, q => cmdSpeed(a, k, q)))));
+    c.appendChild(btn('OWN', cur == null, () => issue(a, 'spd', null, q => cmdSpeed(a, null, q))));
     cols.push(['SPD', c]);
   } else if (kind === 'hdg') {
     const now = Math.round(toMag(a.hdgSel ?? a.hdg) / 10) * 10;
     const L = document.createElement('div'), R = document.createElement('div'); L.className = R.className = 'qcol';
     for (let d = 10; d <= 90; d += 10) {
       const hl = ((now - d) % 360 + 360) % 360 || 360, hr = (now + d) % 360 || 360;
-      L.appendChild(btn('L' + pad3(hl), false, () => { issue(a, 'hdg', hl, () => cmdHeading(a, hl, -1)); if (a.ui) delete a.ui.dct; }));
-      R.appendChild(btn('R' + pad3(hr), false, () => { issue(a, 'hdg', hr, () => cmdHeading(a, hr, 1)); if (a.ui) delete a.ui.dct; }));
+      L.appendChild(btn('L' + pad3(hl), false, () => { issue(a, 'hdg', hl, q => cmdHeading(a, hl, -1, q)); if (a.ui) delete a.ui.dct; }));
+      R.appendChild(btn('R' + pad3(hr), false, () => { issue(a, 'hdg', hr, q => cmdHeading(a, hr, 1, q)); if (a.ui) delete a.ui.dct; }));
     }
     const C = document.createElement('div'); C.className = 'qcol';
     const h0 = now || 360;
-    C.appendChild(btn('H' + pad3(h0), false, () => { issue(a, 'hdg', h0, () => cmdHeading(a, h0, 0)); if (a.ui) delete a.ui.dct; }));
-    dctFixes(a).forEach(f => C.appendChild(btn(f, false, () => { issue(a, 'dct', f, () => cmdDirect(a, f)); if (a.ui) delete a.ui.hdg; }, 'fx')));
+    C.appendChild(btn('H' + pad3(h0), false, () => { issue(a, 'hdg', h0, q => cmdHeading(a, h0, 0, q)); if (a.ui) delete a.ui.dct; }));
+    dctFixes(a).forEach(f => C.appendChild(btn(f, false, () => { issue(a, 'dct', f, q => cmdDirect(a, f, q)); if (a.ui) delete a.ui.hdg; }, 'fx')));
     cols.push(['LEFT', L], ['FLY / DCT', C], ['RIGHT', R]);
   }
   cols.forEach(([t, c]) => { const w = document.createElement('div'); w.className = 'qw'; const h = document.createElement('div'); h.className = 'qh'; h.textContent = t; w.append(h, c); pickEl.appendChild(w); });
@@ -1470,8 +1478,8 @@ function dctFixes(a) {
 }
 function quickILS(a) {
   if (a.kind !== 'arr' || a.transferred) return;
-  if (ui(a, 'ils', a.clearedILS)) { if (a.mode === 'loc' && a.gsCap) issue(a, null, null, () => cmdTransfer(a)); return; }
-  issue(a, 'ils', true, () => cmdILS(a));
+  if (ui(a, 'ils', a.clearedILS)) { if (a.mode === 'loc' && a.gsCap) issue(a, 'xfr', true, q => cmdTransfer(a, q)); return; }
+  issue(a, 'ils', true, q => cmdILS(a, q));
 }
 
 // pointer: drag the map to pan, drag an aircraft to set a heading (release on a fix for direct-to),
@@ -1515,8 +1523,8 @@ cv.addEventListener('pointerup', e => {
   }
   if (GS.drag) {
     const a = GS.drag.a, t = dragTarget(x, y); GS.drag = null;
-    if (t.fix) { issue(a, 'dct', t.fix, () => cmdDirect(a, t.fix)); if (a.ui) delete a.ui.hdg; }
-    else { issue(a, 'hdg', t.h, () => cmdHeading(a, t.h, 0)); if (a.ui) delete a.ui.dct; }
+    if (t.fix) { issue(a, 'dct', t.fix, q => cmdDirect(a, t.fix, q)); if (a.ui) delete a.ui.hdg; }
+    else { issue(a, 'hdg', t.h, q => cmdHeading(a, t.h, 0, q)); if (a.ui) delete a.ui.dct; }
     GS.sel = a; if (!menu.hidden) refreshMenu();
   } else if (down && !down.moved) {
     const h = down.hit;
@@ -1553,15 +1561,15 @@ function runCmd(txt) {
   const t = txt.trim().toUpperCase().replace(/\s+/g, ' ');
   let m;
   if (t === 'X' || t === 'XFL') return cmdReqXfl(a), refreshMenu();
-  if (t === 'I' || t === 'ILS') return issue(a, 'ils', true, () => cmdILS(a)), refreshMenu();
-  if (t === 'T' || t === 'TX' || t === 'C') return issue(a, null, null, () => cmdTransfer(a)), refreshMenu();
+  if (t === 'I' || t === 'ILS') return issue(a, 'ils', true, q => cmdILS(a, q)), refreshMenu();
+  if (t === 'T' || t === 'TX' || t === 'C') return issue(a, 'xfr', true, q => cmdTransfer(a, q)), refreshMenu();
   if ((m = t.match(/^([HLR])\s?(\d{1,3})$/))) { const h = (+m[2] % 360) || 360, d = m[1] === 'L' ? -1 : m[1] === 'R' ? 1 : 0;
-    issue(a, 'hdg', h, () => cmdHeading(a, h, d)); if (a.ui) delete a.ui.dct; return refreshMenu(); }
+    issue(a, 'hdg', h, q => cmdHeading(a, h, d, q)); if (a.ui) delete a.ui.dct; return refreshMenu(); }
   if ((m = t.match(/^([FA])\s?(\d{2,3})$/))) { const n = +m[2], ft = m[1] === 'A' ? (n < 100 ? n * 100 : n * 10) : n * 100;
-    if (ft >= 2000 && ft <= 41000) issue(a, 'cfl', ft, () => cmdLevel(a, ft)); return refreshMenu(); }
-  if ((m = t.match(/^S\s?(\d{3})$/))) { const k = +m[1]; issue(a, 'spd', k, () => cmdSpeed(a, k)); return refreshMenu(); }
-  if (t === 'S' || t === 'SO') { issue(a, 'spd', null, () => cmdSpeed(a, null)); return refreshMenu(); }
-  if ((m = t.match(/^D\s?([A-Z0-9]{3,5})$/)) && W[m[1]]) { const f = m[1]; issue(a, 'dct', f, () => cmdDirect(a, f)); if (a.ui) delete a.ui.hdg; return refreshMenu(); }
+    if (ft >= 2000 && ft <= 41000) issue(a, 'cfl', ft, q => cmdLevel(a, ft, q)); return refreshMenu(); }
+  if ((m = t.match(/^S\s?(\d{3})$/))) { const k = +m[1]; issue(a, 'spd', k, q => cmdSpeed(a, k, q)); return refreshMenu(); }
+  if (t === 'S' || t === 'SO') { issue(a, 'spd', null, q => cmdSpeed(a, null, q)); return refreshMenu(); }
+  if ((m = t.match(/^D\s?([A-Z0-9]{3,5})$/)) && W[m[1]]) { const f = m[1]; issue(a, 'dct', f, q => cmdDirect(a, f, q)); if (a.ui) delete a.ui.hdg; return refreshMenu(); }
   logMsg && logMsg(`Command not understood: ${txt}`, 'warn');
 }
 cv.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.12 : 1 / 1.12); }, { passive: false });
