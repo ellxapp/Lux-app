@@ -137,7 +137,7 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
 
     <div class="ov" id="startOv">
       <div class="card">
-        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 29</div>
+        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 30</div>
         <h1>Luxembourg Approach</h1>
         <p>Work the approach position at Luxembourg Airport for 40 minutes. Vector arrivals onto the ILS, climb departures out on their SIDs and keep everyone separated.</p>
         <div class="pick"><span>Runway</span><button data-rwy="24" aria-pressed="true">24</button><button data-rwy="06" aria-pressed="false">06</button></div>
@@ -797,6 +797,7 @@ function rflFor(t, sid) {
   return pick([33000, 35000, 36000, 37000, 38000]);
 }
 function newAc(o) {
+  if (GS.dry && o.cs) GS.dryAc.set(o.cs, GS.t);
   return Object.assign({ id: GS.nextId++, t0: GS.t, hist: [], histT: 0, vs: 0, tgtIas: null, turnDir: 0, mode: 'route', ri: 0, clearedILS: false,
     gsCap: false, transferred: false, attn: true, entered: false, done: false, lblPos: 0, flags: {}, hdgSel: null }, o);
 }
@@ -1021,6 +1022,7 @@ function goAround(a, why) {
 // ---- scoring & messages ----
 function stat(k) { GS.stats[k] = (GS.stats[k] || 0) + 1; }
 function addScore(n, k, msg) {
+  if (GS.dry) { if (n < 0 && k) GS.dryEv.push({ k, msg }); return; }
   if (GS.free) { if (msg) logMsg(msg, n < 0 ? 'bad' : 'good'); return; }
   if (k) stat(k);
   if (GS.mode === 'race') {
@@ -1040,6 +1042,7 @@ function raceTrack(a) {
 const raceTotal = () => GS.acTime + GS.penSec + GS.acs.filter(a => !a.done && !a.raceDone && a.raceFrom != null).reduce((t, a) => t + GS.t - a.raceFrom, 0);
 function say(a, txt, cls) { logMsg(txt, cls || 'pilot'); }
 function logMsg(txt, cls) {
+  if (GS.dry) return;
   const t = fmtClock(GS.t);
   GS.log.push({ t, txt, cls }); if (GS.log.length > 60) GS.log.shift();
   const el = document.getElementById('log'); const d = document.createElement('div');
@@ -1217,6 +1220,35 @@ function liveInfo(a) {
 }
 
 // ---- demo mode: the game controls the traffic itself ----
+// Rules: the whole traffic sample is test-flown before the demo starts. Every aircraft involved in a
+// separation, wake, MRVA, go-around or airspace problem enters (or departs) 75 s later; repeat until clean.
+// If that does not settle it after 9 runs, the aircraft still in conflict are left out of the demo.
+const DEMO_SEED = 4242;
+function demoPlan(sched) {
+  const keep = { acs: GS.acs, sched: GS.sched, t: GS.t, events: GS.events, lastLand: GS.lastLand, nextId: GS.nextId, sel: GS.sel, stats: GS.stats };
+  let base = sched.map(s => Object.assign({}, s));
+  const csOf = s => s.cs || (s.tr && s.tr.cs);
+  let rounds = 0, left = 0;
+  for (; rounds < 18; rounds++) {
+    Math.random = seeded(DEMO_SEED);
+    Object.assign(GS, { t: 0, acs: [], sched: base.map(s => Object.assign({}, s)).sort((a, b) => a.t - b.t), events: new Map(), lastLand: -999,
+      nextId: 1, sel: null, stats: {}, sweepAcc: 0, chkAcc: 0, dry: true, dryEv: [], dryAc: new Map() });
+    while ((GS.sched.length || GS.acs.some(a => !a.done)) && GS.t < 5400) tick();
+    const names = [...GS.dryAc.keys()].sort((a, b) => b.length - a.length), late = new Set();
+    GS.dryEv.forEach(ev => {
+      const inv = names.filter(n => new RegExp('(^|[^A-Z0-9])' + n + '([^A-Z0-9]|$)').test(ev.msg));
+      if (!inv.length) return;
+      late.add(inv.sort((a, b) => GS.dryAc.get(b) - GS.dryAc.get(a))[0]);      // the one that came last waits
+    });
+    left = late.size;
+    if (!late.size) break;
+    if (rounds < 9) base.forEach(s => { if (late.has(csOf(s))) s.t += 75; });     // first try: later slots
+    else base = base.filter(s => !late.has(csOf(s)));                            // then: leave them out of the demo
+  }
+  GS.dry = false; Object.assign(GS, keep, { sweepAcc: 0, chkAcc: 0 });
+  GS.demoInfo = { rounds, left };
+  return base.sort((a, b) => a.t - b.t);
+}
 function alongThr(a) {
   const thr = THR[st.rwy];
   if (a.mode === 'loc') return finalGeom(a).s;
@@ -1276,7 +1308,7 @@ function demoTick() {
 }
 
 // ---- main loop ----
-let lastTs = null, acc = 0, chkAcc = 0, sweepAcc = 0;
+let lastTs = null, acc = 0;
 // ---- radar picture: refreshed every 4 s, like the real scope ----
 const RADAR_PERIOD = 4, PILOT_DELAY = 4;
 function sweepAc(a) {
@@ -1297,22 +1329,27 @@ function runPending(a) {
   if (GS.sel === a) refreshMenu();
 }
 const ui = (a, k, actual) => (a.ui && a.ui[k] !== undefined) ? a.ui[k] : actual;
+// one simulation step of 0.25 s (also used to test-fly the demo traffic in advance)
+function tick() {
+  GS.t += 0.25;
+  while (GS.sched.length && GS.sched[0].t <= GS.t) {
+    const s = GS.sched.shift();
+    if (!spawn(s)) { s.t = GS.t + 30; GS.sched.push(s); GS.sched.sort((x, y) => x.t - y.t); }
+  }
+  GS.acs.forEach(a => { if (a.done) return; runPending(a); if (!a.done) stepAc(a, 0.25); raceTrack(a); });
+  GS.sweepAcc += 0.25; if (GS.sweepAcc >= RADAR_PERIOD) { GS.sweepAcc = 0; GS.acs.forEach(a => { if (!a.done) sweepAc(a); }); }
+  GS.chkAcc += 0.25; if (GS.chkAcc >= 1) { GS.chkAcc = 0; checks(); demoTick(); }
+  GS.acs = GS.acs.filter(a => !a.done || a === GS.sel);
+}
 function loop(ts) {
   if (lastTs == null) lastTs = ts;
   const real = Math.min(0.25, (ts - lastTs) / 1000); lastTs = ts;
   if (GS.on && !GS.paused && !GS.over) {
     acc += real * GS.speed;
     while (acc >= 0.25) {
-      acc -= 0.25; GS.t += 0.25;
-      if (GS.live) continue;
-      while (GS.sched.length && GS.sched[0].t <= GS.t) {
-        const s = GS.sched.shift();
-        if (!spawn(s)) { s.t = GS.t + 30; GS.sched.push(s); GS.sched.sort((x, y) => x.t - y.t); }
-      }
-      GS.acs.forEach(a => { if (a.done) return; runPending(a); if (!a.done) stepAc(a, 0.25); raceTrack(a); });
-      sweepAcc += 0.25; if (sweepAcc >= RADAR_PERIOD) { sweepAcc = 0; GS.acs.forEach(a => { if (!a.done) sweepAc(a); }); }
-      chkAcc += 0.25; if (chkAcc >= 1) { chkAcc = 0; checks(); demoTick(); }
-      GS.acs = GS.acs.filter(a => !a.done || a === GS.sel);
+      acc -= 0.25;
+      if (GS.live) { GS.t += 0.25; continue; }
+      tick();
       if (GS.sel && GS.sel.done) closeMenu();
       if (GS.mode === 'score' && !GS.free && GS.t >= SESSION) { endGame('Time is up.'); break; }
       if (!GS.sched.length && !GS.acs.some(a => !a.done) && GS.t > 120) {
@@ -1767,16 +1804,25 @@ $('start').onclick = () => {
   const demo = chosen.mode === 'demo', live = chosen.mode === 'live';
   st.rwy = chosen.rwy; GS.level = demo ? 'medium' : chosen.level; mapDirty = true;
   Object.assign(GS, { on: true, over: false, t: 0, score: 0, handled: 0, acs: [], stats: {}, events: new Map(), lastLand: -999, paused: false,
-    mode: demo || live ? 'score' : chosen.mode, demo, live, liveMap: new Map(), liveSrc: null, liveAt: 0, liveWarned: false, demoNext: false, free: demo, freeDone: false, acTime: 0, penSec: 0, smi: null, rbls: [], rbDraft: null });
+    mode: demo || live ? 'score' : chosen.mode, demo, live, nextId: 1, sweepAcc: 0, chkAcc: 0, dry: false, liveMap: new Map(), liveSrc: null, liveAt: 0, liveWarned: false, demoNext: false, free: demo, freeDone: false, acTime: 0, penSec: 0, smi: null, rbls: [], rbDraft: null });
   if (GS.mode === 'race') Math.random = seeded(['easy', 'medium', 'hard'].indexOf(GS.level) * 100 + +st.rwy); else Math.random = RND0;
   GS.sched = applyLeads(demo ? spaceArrivals(buildSchedule(GS.level), st.rwy, 170) : buildSchedule(GS.level), st.rwy);
+  if (demo) {                                   // test-fly the sample first (a few seconds), then start
+    const s0 = GS.sched, runId = (GS.runId = (GS.runId || 0) + 1); GS.on = false;
+    $('startOv').hidden = true; $('endOv').hidden = true; $('log').innerHTML = ''; logMsg('Demo: planning the traffic…', 'info');
+    setTimeout(() => { if (GS.runId !== runId) return; GS.sched = demoPlan(s0); Math.random = seeded(DEMO_SEED); GS.on = true; startTail(true, false); }, 60);
+    return;
+  }
+  startTail(demo, live);
+};
+function startTail(demo, live) {
   $('log').innerHTML = ''; $('startOv').hidden = true; $('endOv').hidden = true; closeMenu();
   $('hRwy').textContent = st.rwy; $('hLvl').textContent = LEVELS[GS.level].name;
   if (live) { $('hLvl').textContent = 'Live'; GS.sched = []; $('log').innerHTML = ''; logMsg('Live: real ADS-B traffic within 60 NM, view only. Tap an aircraft for details; R&B works. Colours are a guess from the flight path. Press END to stop.', 'info'); clearTimeout(GS.liveTimer); livePoll(); updHud(); return; }
-  if (demo) logMsg('Demo: the game is working the traffic itself. Press END to stop.', 'info');
+  if (demo) logMsg(`Demo: the game is working the traffic itself (planned in ${GS.demoInfo.rounds + 1} test runs). Press END to stop.`, 'info');
   logMsg(`Luxembourg Radar open. RWY ${st.rwy} in use. ${LEVELS[GS.level].name}: ${GS.sched.length} aircraft${GS.mode === 'race' ? '. Race: get them all in safely, as fast as you can. Any separation infringement stops the race.' : ' in 40 minutes.'}`, 'info');
   updHud();
-};
+}
 function endGame(why) {
   if (GS.over) return; GS.over = true; closeMenu(); closePick();
   const s = GS.stats, l = GS.level, race = GS.mode === 'race', dnf = race && (!!s.collision || !!GS.smi);
@@ -1797,9 +1843,9 @@ function endGame(why) {
   $('cont').hidden = !(GS.mode === 'score' && why === 'Time is up.');
   $('endOv').hidden = false; showBest();
 }
-function backToStart() { GS.free = false; GS.demo = false; GS.live = false; clearTimeout(GS.liveTimer); $('endOv').hidden = true; $('startOv').hidden = false; GS.on = false; GS.over = false; GS.acs = []; closeMenu(); closePick(); showBest(); updHud(); }
+function backToStart() { GS.runId = (GS.runId || 0) + 1; GS.free = false; GS.demo = false; GS.live = false; clearTimeout(GS.liveTimer); $('endOv').hidden = true; $('startOv').hidden = false; GS.on = false; GS.over = false; GS.acs = []; closeMenu(); closePick(); showBest(); updHud(); }
 $('cont').onclick = () => { GS.free = true; GS.over = false; $('endOv').hidden = true; logMsg('Free play: the exercise continues without points. Press END to finish.', 'info'); updHud(); };
-function gameOver(msg) { if (GS.demo) { if (!GS.events.has('nc' + msg)) { GS.events.set('nc' + msg, 1); logMsg(msg, 'bad'); } return; } addScore(-500, 'collision', msg); endGame(msg); }
+function gameOver(msg) { if (GS.dry) { GS.dryEv.push({ k: 'collision', msg }); return; } if (GS.demo) { if (!GS.events.has('nc' + msg)) { GS.events.set('nc' + msg, 1); logMsg(msg, 'bad'); } return; } addScore(-500, 'collision', msg); endGame(msg); }
 $('again').onclick = backToStart;
 
 const VIEW = [-2, 3];
