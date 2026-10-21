@@ -132,12 +132,12 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
       <div class="mrow c-lvl"><span class="ml">LVL</span><div class="mb" id="mLvl"></div></div>
       <div class="mrow c-spd"><span class="ml">SPD</span><div class="mb" id="mSpd"></div></div>
       <div class="mrow c-dct"><span class="ml">DCT</span><div class="mb" id="mDct"></div></div>
-      <div class="mrow act"><button id="mReq">REQ HIGHER XFL</button><button id="mIls">CLEARED ILS</button><button id="mXfr">TRANSFER</button><button id="mLbl">AUTO LABEL</button></div>
+      <div class="mrow act"><button id="mHold">HOLD DIK</button><button id="mReq">REQ HIGHER XFL</button><button id="mIls">CLEARED ILS</button><button id="mXfr">TRANSFER</button><button id="mLbl">AUTO LABEL</button></div>
     </div>
 
     <div class="ov" id="startOv">
       <div class="card">
-        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 30</div>
+        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 31</div>
         <h1>Luxembourg Approach</h1>
         <p>Work the approach position at Luxembourg Airport for 40 minutes. Vector arrivals onto the ILS, climb departures out on their SIDs and keep everyone separated.</p>
         <div class="pick"><span>Runway</span><button data-rwy="24" aria-pressed="true">24</button><button data-rwy="06" aria-pressed="false">06</button></div>
@@ -171,7 +171,8 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
     <div class="help" id="help" hidden>
       <div class="hh"><b>HOW TO PLAY</b><button id="helpClose" aria-label="Close">✕</button></div>
       <p><b>Fast clearances.</b> Click a field in the label: the <b>CFL</b> for a level list, the <b>heading</b> field (H270 or XFL) for left/right turns and direct-to, the <b>speed</b> field (4th line) for speeds, the <b>runway</b> to clear the ILS (a second click hands an established arrival to TWR). <b>Drag from the aircraft</b> to give a heading; release on a fix for direct-to. Click the <b>callsign</b> for the full menu. Drag a label to move it. A white box means the pilot is waiting for you.</p>
-      <p><b>Keyboard:</b> select an aircraft, type and press Enter: H270, L270, R270, F110, A40, S200, S (own speed), D BREDI, I (ILS), T (transfer), X (request higher XFL). Esc closes.</p>
+      <p><b>DIK holding:</b> HOLD DIK (menu, heading list or keyboard HOLD) sends an arrival to the published hold: inbound 120°, right turns, 1 min legs, FL140 to 4000 ft, 230 kt. Give levels as usual. CLEARED ILS lets it leave at DIK on the transition; a heading or direct-to takes it straight out.</p>
+      <p><b>Keyboard:</b> select an aircraft, type and press Enter: H270, L270, R270, F110, A40, S200, S (own speed), D BREDI, I (ILS), T (transfer), X (request higher XFL), HOLD. Esc closes.</p>
       <p><b>Arrivals</b> (green) call in descending on their STAR and fly the RNAV transition on their own. Shorten the route with headings or direct-to, descend them (the shading shows the minimum vectoring altitude: light 3000 ft, dark 4000 ft, TILVI area 5000 ft), then <b>CLEARED ILS</b>. They keep their level on the localiser and intercept the glidepath from below: 3000 ft at about 6 NM, 4000 ft at about 9 NM, 5000 ft at about 12 NM. Once established on the localiser and glidepath, hand them to <b>TWR 118.105</b>, ideally between 12 and 4 NM final.</p>
       <p><b>Departures</b> (blue) call when airborne, climbing to 4000 ft on their SID. Climb them to their exit level (XFL in the menu). If you need more room, <b>REQ HIGHER XFL</b> asks the next unit; the answer comes after 10 s (Brussels FL180, Langen FL160, Paris FL240, Strasbourg FL190) and the new level appears in the level lists and <b>TRANSFER</b> before they leave the TMA. Traffic leaving to the south (GTQ, N852) may be kept until 25 NM south of AKELU. After transfer the next unit climbs them to their cruising level (RFL in the menu). GTQ departures should reach FL120 before LX772 (RWY 06) or LX896 (RWY 24), as in the Strasbourg LoA, or be recleared FL100 (no penalty in the game).
       <p><b>Transits</b> (yellow) cross at their level. Keep them clear of your traffic and transfer before they leave (southbound: until 25 NM south of AKELU).</p>
@@ -872,6 +873,34 @@ function southGrace(a) {
   const ak = W.AKELU, p = a.pos;
   return !(p[1] < ak[1] && dist(p, ak) > 25);
 }
+// ---- DIK holding (AIP: inbound 120° MAG / 123° true, right turns, 1 min, FL140 to 4000 ft, 230 kt max) ----
+const HOLD = { fix: 'DIK', inb: 123.0, turn: 1, legS: 60, maxKt: 230, top: 14000, bottom: 4000 };
+function holdWant(a) {
+  const h = a.hold, fix = W[HOLD.fix], out = norm(HOLD.inb + 180), d = dist(a.pos, fix);
+  a.turnDir = 0;
+  if (h.ph === 'to' || h.ph === 'in') {
+    if (d < 0.5) { if (h.exit) { leaveHold(a); return brgTo(a.pos, W[a.route[0]]); } h.ph = 'out1'; }
+    else return brgTo(a.pos, fix);
+  }
+  if (h.ph === 'out1') { if (Math.abs(angDiff(a.hdg, out)) < 3) { h.ph = 'out'; h.t = GS.t; } else { a.turnDir = HOLD.turn; return out; } }
+  if (h.ph === 'out') { if (GS.t - h.t >= HOLD.legS) h.ph = 'in1'; else return out; }
+  if (h.ph === 'in1') { if (Math.abs(angDiff(a.hdg, brgTo(a.pos, fix))) < 20) h.ph = 'in'; else { a.turnDir = HOLD.turn; return HOLD.inb; } }
+  return brgTo(a.pos, fix);
+}
+function leaveHold(a) {
+  a.hold = null;
+  if (a.kind === 'arr') { a.route = CONT[st.rwy].DIK.slice(); a.ri = 0; a.mode = 'route'; a.legTurn = 0;
+    if (a.clearedILS) { a.vnav = true; a.cfl = 3000; } }
+  else { a.mode = 'hdg'; a.hdgSel = a.hdg; }
+}
+function cmdHold(a, p) {
+  if (a.kind !== 'arr') { if (p !== 'do') say(a, `${a.cs}, unable, hold not for you.`, 'warn'); return false; }
+  if (p !== 'do') say(a, `Hold at ${HOLD.fix} as published, ${a.cs}.`);
+  if (p === 'rb') return;
+  a.mode = 'hold'; a.hold = { ph: dist(a.pos, W[HOLD.fix]) < 1 ? 'out1' : 'to' }; a.vnav = false; a.hdgSel = null; a.turnDir = 0; a.attn = false;
+  if (a.cfl > HOLD.top) a.cfl = HOLD.top;
+}
+
 // ---- per-aircraft step ----
 function stepAc(a, dt) {
   const pf = perf(a.type);
@@ -916,11 +945,12 @@ function stepAc(a, dt) {
     const fix = W[a.directFix]; want = brgTo(a.pos, fix);
     if (dist(a.pos, fix) < 0.8) { a.mode = 'hdg'; a.hdgSel = a.hdg; a.turnDir = 0; }
   } else if (a.mode === 'hdg') want = a.hdgSel ?? a.hdg;
+  else if (a.mode === 'hold') want = holdWant(a);
   else if (a.mode === 'loc') want = norm(fg.crs - clamp(fg.x * 45, -35, 35));
   // turn
   const rate = turnRate(a) * dt;
   let dlt = angDiff(a.hdg, want);
-  if (a.mode === 'hdg' && a.turnDir) {
+  if ((a.mode === 'hdg' || a.mode === 'hold') && a.turnDir) {
     if (Math.abs(dlt) < 0.5) a.turnDir = 0;
     else dlt = a.turnDir < 0 ? -norm(a.hdg - want) : norm(want - a.hdg);
   }
@@ -975,6 +1005,7 @@ function stepAc(a, dt) {
   if (a.mode === 'loc' && a.gsCap && fg.s < 4) sp = pf.vapp;
   if (a.mode === 'loc' && fg.s < 6) sp = Math.min(sp, 160);
   if (a.alt < 10000 || dist(a.pos, LUXV) < 25) sp = Math.min(sp, 250);
+  if (a.mode === 'hold') sp = Math.min(sp, HOLD.maxKt);
   sp = Math.min(sp, pf.cruise);
   if (!(a.mode === 'loc' && fg.s < 6)) sp = Math.max(sp, pf.vmin);
   const acc = sp > a.ias ? 2 * dt : 1.2 * dt;
@@ -1101,7 +1132,7 @@ function cmdHeading(a, magHdg, dir, p) {
   const h = ((Math.round(magHdg) % 360) + 360) % 360 || 360;
   if (p !== 'do') say(a, `${dir < 0 ? 'Left heading' : dir > 0 ? 'Right heading' : 'Heading'} ${pad3(h)}, ${a.cs}.`);
   if (p === 'rb') return;
-  a.mode = 'hdg'; a.hdgSel = norm(h + MAGVAR); a.turnDir = dir; a.attn = false; a.vnav = false; a.caAlt = 0;
+  a.mode = 'hdg'; a.hdgSel = norm(h + MAGVAR); a.turnDir = dir; a.attn = false; a.vnav = false; a.caAlt = 0; a.hold = null;
   if (a.kind === 'arr' && a.gsCap) a.gsCap = false;
 }
 function cmdLevel(a, ft, p) {
@@ -1131,18 +1162,21 @@ function cmdDirect(a, fix, p) {
   if (idx >= 0 && (a.mode === 'route' || idx >= a.ri)) { a.mode = 'route'; a.ri = idx; }
   else if (tr) { a.route = tr; a.ri = 0; a.mode = 'route'; }
   else { a.mode = 'direct'; a.directFix = fix; a.vnav = false; }
+  a.hold = null;
   if (a.mode === 'route' && a.clearedILS) a.vnav = true;
   a.turnDir = 0; a.hdgSel = null; a.legTurn = 0; a.caAlt = 0;
 }
 function cmdILS(a, p) {
   if (p !== 'do') {
-    if (a.mode === 'route') {
+    if (a.mode === 'hold') say(a, `Cleared ILS Z runway ${st.rwy} via ${HOLD.fix}, leaving the hold, ${a.cs}.`);
+    else if (a.mode === 'route') {
       const via = a.route.slice(a.ri).find(n => VIA_PTS[st.rwy].includes(n)) || a.route[a.ri];
       say(a, `Cleared ILS Z runway ${st.rwy} via ${via}, ${a.cs}.`);
     } else say(a, `Cleared ILS runway ${st.rwy}, ${a.cs}.`);
   }
   if (p === 'rb') return;
   a.attn = false; a.clearedILS = true;
+  if (a.mode === 'hold') { a.hold.exit = true; return; }          // leaves the hold at DIK on the transition
   if (a.mode === 'route') { a.vnav = true; a.cfl = 3000; }   // ILS Z via the next IAF/IF: descent on the published profile
 }
 function cmdTransfer(a, p) {
@@ -1259,6 +1293,12 @@ function alongThr(a) {
   }
   const IF = W[IF_FAF[st.rwy][0]]; return dist(a.pos, IF) + dist(IF, thr);
 }
+// closest lateral distance between two aircraft over the next T seconds (straight-line prediction)
+function closest(a, b, T) {
+  let m = dist(a.pos, b.pos);
+  for (let t = 10; t <= T; t += 10) m = Math.min(m, dist(fromBrg(a.pos, a.hdg, tas(a) / 3600 * t), fromBrg(b.pos, b.hdg, tas(b) / 3600 * t)));
+  return m;
+}
 function demoTick() {
   if (!GS.demo) return;
   const live = GS.acs.filter(a => !a.done && !a.pre && !a.transferred);
@@ -1285,20 +1325,26 @@ function demoTick() {
     if (i > 0 && a.mode !== 'loc') {
       const lead = arr[i - 1], gap = o.d - lead.d, req = wakeReq(lead.a, a) + 2.5;
       if (gap < req + 1) spd = Math.max(perf(a.type).vmin, 170); else if (gap < req + 5) spd = Math.max(perf(a.type).vmin, 200);
+      if (cur != null) {                                         // hysteresis: as few speed changes as possible
+        if (spd == null && gap < req + 9) spd = cur;
+        if (spd != null && spd > cur && gap < req + 7) spd = cur;
+      }
     }
     if (a.mode !== 'loc' && spd !== cur && !(spd == null && cur == null)) issue(a, 'spd', spd, q => cmdSpeed(a, spd, q));
   });
   live.filter(a => a.kind === 'dep').forEach(a => {
     if (busy(a)) return;
     const r = dist(a.pos, [0, 0]);
-    if (a.alt > 3000) {
-      let tgt = a.xfl; const pa = a.alt + Math.max(0, a.vs) * 12 / 60;     // where it will be once the pilot reacts
-      GS.acs.forEach(b => { if (b === a || b.done || b.pre || dist(a.pos, b.pos) > 14) return;
-        if (b.alt > pa - 300) tgt = Math.min(tgt, Math.max(4000, Math.floor((Math.min(b.alt, b.cfl) - 1000) / 1000) * 1000)); });
-      if (tgt < pa - 200) tgt = Math.max(4000, Math.ceil(pa / 1000) * 1000);   // stop the climb at the next level up
-      const cur = ui(a, 'cfl', a.cfl);
-      if (tgt !== cur && Math.abs(tgt - cur) >= 1000) { issue(a, 'cfl', tgt, q => cmdLevel(a, tgt, q)); return; }
-    }
+    // climb: one clearance to the highest safe level (ideally the XFL), given once the aircraft is close to its current level;
+    // a lower level only when needed to stay clear of traffic above
+    const cur = ui(a, 'cfl', a.cfl), pa = a.alt + Math.max(0, a.vs) * 12 / 60;
+    let ceil = a.xfl;
+    GS.acs.forEach(b => { if (b === a || b.done || b.pre || dist(a.pos, b.pos) > 14 || b.alt <= pa - 300 || closest(a, b, 150) > 5) return;
+      ceil = Math.min(ceil, Math.max(4000, Math.floor((Math.min(b.alt, b.cfl) - 1000) / 1000) * 1000)); });
+    if (ceil < cur && cur > pa) {                                  // must stop lower than cleared
+      const lv = ceil >= pa - 200 ? ceil : Math.max(4000, Math.ceil(pa / 1000) * 1000);
+      if (lv !== cur) { issue(a, 'cfl', lv, q => cmdLevel(a, lv, q)); return; }
+    } else if (ceil > cur && a.alt >= cur - 700 && (ceil === a.xfl || ceil >= cur + 2000)) { issue(a, 'cfl', ceil, q => cmdLevel(a, ceil, q)); return; }
     const nearEdge = !inTMA(fromBrg(a.pos, a.hdg, 3));
     if (!ui(a, 'xfr', false) && (r > 20 || nearEdge || (a.alt >= a.cfl - 300 && r > 14))) issue(a, 'xfr', true, q => cmdTransfer(a, q));
   });
@@ -1381,6 +1427,7 @@ function render() {
   HITS = [];
   const live = GS.acs.filter(a => !a.done);
   const items = live.map(a => lblItem(a, fs));
+  if (st.wpt) drawHold();
   items.forEach(drawBlip);
   placeLabels(items);
   items.forEach(it => drawLabel(it, fs));
@@ -1431,7 +1478,7 @@ function lblItem(a, fs) {
   const arrow = D.vs > 150 ? '↑' : D.vs < -150 ? '↓' : ' ';
   const roc = Math.round(D.vs / 100), arc = Math.abs(roc) < 2 ? 'ARC' : 'r' + (roc > 0 ? '↑' : '↓') + String(Math.abs(roc)).padStart(2, '0');
   const uH = ui(a, 'hdg', undefined), uD = ui(a, 'dct', undefined);
-  const hdgT = uH !== undefined ? 'H' + pad3(uH) : uD !== undefined ? uD : a.mode === 'hdg' && a.hdgSel != null ? 'H' + pad3(toMag(a.hdgSel)) : a.mode === 'direct' ? a.directFix : '';
+  const hdgT = ui(a, 'hold', false) ? 'HOLD' : uH !== undefined ? 'H' + pad3(uH) : uD !== undefined ? uD : a.mode === 'hdg' && a.hdgSel != null ? 'H' + pad3(toMag(a.hdgSel)) : a.mode === 'direct' ? a.directFix : a.mode === 'hold' ? 'HOLD' : '';
   const uS = ui(a, 'spd', a.tgtIas), spdT = uS ? 'S' + uS : '', CFL = ui(a, 'cfl', a.cfl);
   const T = (t, k) => ({ t, k });
   let lines;
@@ -1451,6 +1498,18 @@ function lblItem(a, fs) {
   g.font = `500 ${fs}px ${FONT}`;
   const lh = fs + 1, bw = Math.max(...lines.map(l => g.measureText(l.map(x => x.t).join('')).width)) + 2, bh = lines.length * lh + 3;
   return { a, dim, col, D, s, v, lines, roc, lh, bw, bh };
+}
+function drawHold() {
+  const fix = W[HOLD.fix], inb = HOLD.inb, out = norm(inb + 180), r = 1.25, L = 4.5, side = norm(inb + 90 * HOLD.turn);
+  const p1 = fromBrg(fix, out, L), q0 = fromBrg(fix, side, 2 * r), q1 = fromBrg(p1, side, 2 * r);
+  const c0 = fromBrg(fix, side, r), c1 = fromBrg(p1, side, r);
+  g.save(); g.strokeStyle = 'rgba(200,205,240,.55)'; g.lineWidth = 1; g.setLineDash([4, 3]);
+  const arc = (c, a0) => { g.beginPath(); for (let k = 0; k <= 18; k++) { const q = S(fromBrg(c, a0 + k * 10, r)); k ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); } g.stroke(); };
+  g.beginPath(); let a = S(p1), b = S(fix); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+  g.beginPath(); a = S(q0); b = S(q1); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+  arc(c0, norm(side + 180)); arc(c1, side);
+  g.setLineDash([]); const t = S(fromBrg(p1, side, r)); g.fillStyle = 'rgba(200,205,240,.75)'; g.font = `500 10px ${FONT}`;
+  g.fillText('FL140–4000 · 230 KT', t[0] - 40, t[1] + 16); g.restore();
 }
 function drawBlip(it) {
   const { a, col, s, v } = it;
@@ -1578,6 +1637,7 @@ function openMenu(a) {
   const xf = a.transferred || ui(a, 'xfr', false);
   $('mXfr').textContent = xf ? (a.kind === 'arr' ? 'WITH TWR' : 'TRANSFERRED') : a.kind === 'arr' ? 'TWR 118.105' : 'TRANSFER';
   $('mXfr').disabled = !!xf; $('mXfr').setAttribute('aria-pressed', !!xf);
+  $('mHold').hidden = a.kind !== 'arr' || a.transferred; $('mHold').setAttribute('aria-pressed', a.mode === 'hold');
   const rq = $('mReq'); rq.hidden = a.kind !== 'dep' || a.transferred;
   rq.textContent = a.xflUp ? `XFL ${sayLvl(a.xfl)} APPROVED` : a.xflReqT ? 'XFL REQUESTED…' : `REQ HIGHER XFL (${(NEXT_UNIT[a.exit] || ['Brussels'])[0]})`;
   rq.disabled = !!(a.xflUp || a.xflReqT);
@@ -1609,6 +1669,7 @@ $('mL').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.se
 $('mR').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.sel; issue(a, 'hdg', v, q => cmdHeading(a, v, 1, q)); if (a.ui) delete a.ui.dct; refreshMenu(); } };
 $('mF').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.sel; issue(a, 'hdg', v, q => cmdHeading(a, v, 0, q)); if (a.ui) delete a.ui.dct; refreshMenu(); } };
 $('mh').addEventListener('keydown', e => { if (e.key === 'Enter') $('mF').click(); });
+$('mHold').onclick = () => { const a = GS.sel; if (a) { issue(a, 'hold', true, q => cmdHold(a, q)); refreshMenu(); } };
 $('mReq').onclick = () => { const a = GS.sel; if (a) { cmdReqXfl(a); refreshMenu(); } };
 $('mIls').onclick = () => { const a = GS.sel; if (a) { issue(a, 'ils', true, q => cmdILS(a, q)); refreshMenu(); } };
 $('mXfr').onclick = () => { const a = GS.sel; if (a) { issue(a, 'xfr', true, q => cmdTransfer(a, q)); refreshMenu(); } };
@@ -1645,6 +1706,7 @@ function openPick(a, kind, x, y) {
     }
     const C = document.createElement('div'); C.className = 'qcol';
     const h0 = now || 360;
+    if (a.kind === 'arr') C.appendChild(btn('HOLD DIK', a.mode === 'hold', () => issue(a, 'hold', true, q => cmdHold(a, q)), 'fx'));
     C.appendChild(btn('H' + pad3(h0), false, () => { issue(a, 'hdg', h0, q => cmdHeading(a, h0, 0, q)); if (a.ui) delete a.ui.dct; }));
     dctFixes(a).forEach(f => C.appendChild(btn(f, false, () => { issue(a, 'dct', f, q => cmdDirect(a, f, q)); if (a.ui) delete a.ui.hdg; }, 'fx')));
     cols.push(['LEFT', L], ['FLY / DCT', C], ['RIGHT', R]);
@@ -1745,6 +1807,7 @@ function runCmd(txt) {
   const a = GS.sel; if (!a || a.done || GS.live) return;
   const t = txt.trim().toUpperCase().replace(/\s+/g, ' ');
   let m;
+  if (t === 'HOLD' || t === 'HD') return issue(a, 'hold', true, q => cmdHold(a, q)), refreshMenu();
   if (t === 'X' || t === 'XFL') return cmdReqXfl(a), refreshMenu();
   if (t === 'I' || t === 'ILS') return issue(a, 'ils', true, q => cmdILS(a, q)), refreshMenu();
   if (t === 'T' || t === 'TX' || t === 'C') return issue(a, 'xfr', true, q => cmdTransfer(a, q)), refreshMenu();
