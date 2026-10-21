@@ -1161,7 +1161,12 @@ function cmdTransfer(a, p) {
 }
 
 // ---- live mode: real ADS-B traffic around ELLX, view only ----
+const DEFAULT_RELAY = '';
+// A relay (e.g. a Cloudflare Worker) avoids the browser's cross-site block: set it once with ?relay=https://... in the page address.
+const LIVE_RELAY = (() => { let r = ''; try { const q = new URLSearchParams(location.search).get('relay'); if (q) localStorage.setItem('luxapp-relay', q);
+  r = q || localStorage.getItem('luxapp-relay') || ''; } catch (e) {} return r || DEFAULT_RELAY; })();
 const LIVE_SRC = [
+  ...(LIVE_RELAY ? [['relay', (la, lo) => `${LIVE_RELAY.replace(/\/$/, '')}/?lat=${la}&lon=${lo}&r=60`]] : []),
   ['airplanes.live', (la, lo) => `https://api.airplanes.live/v2/point/${la}/${lo}/60`],
   ['adsb.lol', (la, lo) => `https://api.adsb.lol/v2/point/${la}/${lo}/60`],
 ];
