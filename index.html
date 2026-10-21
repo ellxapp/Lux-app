@@ -1204,6 +1204,7 @@ function liveIngest(list) {
     Object.assign(a, { pos, alt: x.alt_baro, hdg, vs, ias: gs, seen: now, sqk: x.squawk || '', reg: x.r || '',
       cfl: x.nav_altitude_mcp ? Math.round(x.nav_altitude_mcp / 100) * 100 : x.alt_baro });
     a.disp = { pos: pos.slice(), hdg, alt: a.alt, vs, gs };
+    a.transferred = a.alt > 22500;                         // above FL225: not our traffic, shown greyed out
     const d = dist(pos, [0, 0]), rel = Math.abs(angDiff(hdg, brgTo(pos, [0, 0])));
     a.kind = (a.alt < 12000 && vs < -300 && rel < 70) || (a.alt < 6000 && rel < 45 && d < 25) ? 'arr'
       : (a.alt < 16000 && vs > 300 && rel > 110 && d < 40) ? 'dep' : 'trn';
@@ -1397,7 +1398,7 @@ function lblItem(a, fs) {
   const uS = ui(a, 'spd', a.tgtIas), spdT = uS ? 'S' + uS : '', CFL = ui(a, 'cfl', a.cfl);
   const T = (t, k) => ({ t, k });
   let lines;
-  if (a.live) lines = [[T(a.cs, 'menu'), T(` ${a.type}/${a.wtc}`)], [T(`${fmtLvl(D.alt)}${arrow}`), T(fmtLvl(CFL)), T(` ${a.sqk}`)],
+  if (a.live && !dim) lines = [[T(a.cs, 'menu'), T(` ${a.type}/${a.wtc}`)], [T(`${fmtLvl(D.alt)}${arrow}`), T(fmtLvl(CFL)), T(` ${a.sqk}`)],
     [T(`G${gs} `), T(a.reg || '')], [T('     '), T(' '), T(arc, 'arc')]];
   else if (dim) lines = [[T(a.cs, a.pre ? null : 'menu')], [T(`${fmtLvl(D.alt)}${arrow} G${gs}`)]];
   else {
