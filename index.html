@@ -1161,7 +1161,7 @@ function cmdTransfer(a, p) {
 }
 
 // ---- live mode: real ADS-B traffic around ELLX, view only ----
-const DEFAULT_RELAY = '';
+const DEFAULT_RELAY = 'https://lux-adsb.pjmorgan.workers.dev';
 // A relay (e.g. a Cloudflare Worker) avoids the browser's cross-site block: set it once with ?relay=https://... in the page address.
 const LIVE_RELAY = (() => { let r = ''; try { const q = new URLSearchParams(location.search).get('relay'); if (q) localStorage.setItem('luxapp-relay', q);
   r = q || localStorage.getItem('luxapp-relay') || ''; } catch (e) {} return r || DEFAULT_RELAY; })();
