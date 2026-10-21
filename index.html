@@ -141,10 +141,10 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
         <h1>Luxembourg Approach</h1>
         <p>Work the approach position at Luxembourg Airport for 40 minutes. Vector arrivals onto the ILS, climb departures out on their SIDs and keep everyone separated.</p>
         <div class="pick"><span>Runway</span><button data-rwy="24" aria-pressed="true">24</button><button data-rwy="06" aria-pressed="false">06</button></div>
-        <div class="pick"><span>Mode</span><button data-mode="score" aria-pressed="true">Score · 40 min</button><button data-mode="race" aria-pressed="false">Race</button></div>
+        <div class="pick"><span>Mode</span><button data-mode="score" aria-pressed="true">Score · 40 min</button><button data-mode="race" aria-pressed="false">Race</button><button data-mode="demo" aria-pressed="false">Demo</button></div>
         <div class="pick"><span>Level</span>
           <button data-lvl="easy" aria-pressed="false">Easy</button><button data-lvl="medium" aria-pressed="true">Medium</button><button data-lvl="hard" aria-pressed="false">Hard</button></div>
-        <p class="fine" id="modeNote">Score: 40 minutes, then continue without points if you wish. Race: the same traffic sample for every player on that level and runway; the clock runs until all traffic is handled. Any separation infringement stops the race. Fastest wins.</p>
+        <p class="fine" id="modeNote">Score: 40 minutes, then continue without points if you wish. Race: the same traffic sample for every player on that level and runway; the clock runs until all traffic is handled. Any separation infringement stops the race. Fastest wins. Demo: the game works Medium traffic on its own and starts again with the other runway.</p>
         <table class="lv">
           <tr><th></th><th>Arrivals</th><th>Departures</th><th>Transits</th><th>Heavies</th></tr>
           <tr><td>Easy</td><td>10</td><td>5</td><td>0</td><td>0</td></tr>
@@ -748,6 +748,18 @@ function trnPlan(x) {
   const s0 = Math.min(0, entryAlong(pts) - PRE_NM);
   return { pts, s0, lead: -s0 / cruiseGs(x.t, x.alt) * 3600 };
 }
+function spaceArrivals(sched, rwy, gap) {
+  let last = -1e9;
+  sched.filter(s => s.kind === 'arr').sort((x, y) => x.t - y.t).forEach(s => {
+    const pl = arrPlan(s, rwy), e = pl.e, route = e.via.concat(CONT[rwy][e.via[e.via.length - 1]]);
+    let d = dist(pl.callP, W[route[0]]); for (let k = 1; k < route.length; k++) d += dist(W[route[k - 1]], W[route[k]]);
+    d += dist(W[route[route.length - 1]], THR[rwy]);
+    const land = s.t + d / 225 * 3600;
+    if (land < last + gap) s.t += last + gap - land;
+    last = Math.max(land, last + gap);
+  });
+  return sched.sort((a, b) => a.t - b.t);
+}
 function applyLeads(sched, rwy) {
   sched.forEach(s => {
     const pl = s.kind === 'arr' ? arrPlan(s, rwy) : s.kind === 'trn' ? trnPlan(s.tr) : null;
@@ -805,6 +817,7 @@ function spawn(s) {
     GS.acs.push(a); sweepAc(a);
     if (!pre) say(a, `Luxembourg Radar, ${a.cs}, ${sayLvl(a.alt)} descending ${sayLvl(a.cfl)}, inbound ${e.cop}.`, 'call');
   } else if (s.kind === 'dep') {
+    if (GS.demo && GS.acs.some(b => !b.done && b.kind === 'arr' && b.mode === 'loc' && finalGeom(b).s < 7)) return false;
     const sid = SID[rwy][s.exit], der = THR[OPP[rwy]], p = fromBrg(der, CRS[rwy], 0.8);
     const a = newAc({ cs: s.cs, type: s.type, wtc: wtcOf(s.type), kind: 'dep', exit: s.exit, sid: sid.name, xfl: sid.xfl, xfl0: sid.xfl, rfl: Math.max(sid.xfl, rflFor(s.type, s.exit)), pos: p,
       alt: THR_ELEV[OPP[rwy]] + 900, cfl: 4000, ias: 170, route: sid.r.slice(), hdg: CRS[rwy], entered: true,
@@ -935,6 +948,7 @@ function stepAc(a, dt) {
       a.flags.high = true; say(a, `${a.cs}, we are too high for the approach.`, 'warn');
     }
   }
+  if (a.demoFloor && !(a.mode === 'loc' && a.gsCap)) tgt = Math.max(Math.min(tgt, a.alt), Math.min(a.alt, a.demoFloor));   // demo: hold above traffic below
   if (a.kind === 'dep' && a.mode === 'route' && a.maxc) {
     a.route.slice(a.ri).forEach(n => { if (a.maxc[n]) tgt = Math.min(tgt, Math.max(a.maxc[n], a.alt < a.maxc[n] ? 0 : a.alt)); });
   }
@@ -998,7 +1012,7 @@ function stepAc(a, dt) {
 
 function goAround(a, why) {
   a.mode = 'hdg'; a.hdgSel = CRS[st.rwy]; a.turnDir = 0; a.clearedILS = false; a.gsCap = false; a.cfl = 4000; a.tgtIas = null;
-  a.transferred = false; a.attn = true; a.flags.rwyChk = false; a.ias = Math.max(a.ias, 170);
+  a.transferred = false; a.attn = true; a.flags.rwyChk = false; a.ias = Math.max(a.ias, 170); a.flags.ga = true;
   a.ui = {}; a.pending = [];
   addScore(-50, 'ga', `${a.cs} going around: ${why}.`);
   say(a, `Luxembourg Radar, ${a.cs}, going around, climbing altitude 4000.`, 'warn');
@@ -1146,6 +1160,65 @@ function cmdTransfer(a, p) {
   } else addScore(25, 'trnOk', `${a.cs} transit transferred.`);
 }
 
+// ---- demo mode: the game controls the traffic itself ----
+function alongThr(a) {
+  const thr = THR[st.rwy];
+  if (a.mode === 'loc') return finalGeom(a).s;
+  if (a.mode === 'route' && a.route && a.ri < a.route.length) {
+    let d = dist(a.pos, W[a.route[a.ri]]);
+    for (let k = a.ri + 1; k < a.route.length; k++) d += dist(W[a.route[k - 1]], W[a.route[k]]);
+    return d + dist(W[a.route[a.route.length - 1]], thr);
+  }
+  const IF = W[IF_FAF[st.rwy][0]]; return dist(a.pos, IF) + dist(IF, thr);
+}
+function demoTick() {
+  if (!GS.demo) return;
+  const live = GS.acs.filter(a => !a.done && !a.pre && !a.transferred);
+  const busy = a => a.pending && a.pending.length;
+  const arr = live.filter(a => a.kind === 'arr').map(a => ({ a, d: alongThr(a) })).sort((x, y) => x.d - y.d);
+  arr.forEach(o => {                                    // keep arrivals above departures and transits close below them
+    const a = o.a; let fl = 0;
+    if (a.mode !== 'loc' && o.d > 18) GS.acs.forEach(b => { if (b === a || b.done || b.pre || b.kind === 'arr' || dist(a.pos, b.pos) > 8 || b.alt > a.alt) return;
+      fl = Math.max(fl, Math.ceil((Math.max(b.alt, b.cfl) + 1000) / 1000) * 1000); });
+    a.demoFloor = fl;
+  });
+  arr.forEach((o, i) => {
+    const a = o.a; if (busy(a)) return;
+    if (a.mode === 'hdg') {                             // end of a transition: direct to an IAF that leaves room to descend
+      const faf = W[IF_FAF[st.rwy][1]], IF = W[IF_FAF[st.rwy][0]];
+      const opts = VIA_PTS[st.rwy].map(n => ({ n, d: dist(a.pos, W[n]) + (n === IF_FAF[st.rwy][0] ? 0 : dist(W[n], IF)) + dist(IF, faf) }))
+        .filter(o => (a.alt - 3000) / Math.max(1, o.d) <= 260).sort((x, y) => a.flags.ga ? y.d - x.d : x.d - y.d);   // after a go-around: the long way round
+      const f = (opts[0] || { n: VIA_PTS[st.rwy][1] }).n; issue(a, 'dct', f, q => cmdDirect(a, f, q)); return;
+    }
+    if (!a.clearedILS) { issue(a, 'ils', true, q => cmdILS(a, q)); return; }
+    if (a.mode === 'loc' && a.estab && a.gsCap && finalGeom(a).s < 10) { issue(a, 'xfr', true, q => cmdTransfer(a, q)); return; }
+    const cur = ui(a, 'spd', a.tgtIas);
+    let spd = null;
+    if (i > 0 && a.mode !== 'loc') {
+      const lead = arr[i - 1], gap = o.d - lead.d, req = wakeReq(lead.a, a) + 2.5;
+      if (gap < req + 1) spd = Math.max(perf(a.type).vmin, 170); else if (gap < req + 5) spd = Math.max(perf(a.type).vmin, 200);
+    }
+    if (a.mode !== 'loc' && spd !== cur && !(spd == null && cur == null)) issue(a, 'spd', spd, q => cmdSpeed(a, spd, q));
+  });
+  live.filter(a => a.kind === 'dep').forEach(a => {
+    if (busy(a)) return;
+    const r = dist(a.pos, [0, 0]);
+    if (a.alt > 3000) {
+      let tgt = a.xfl; const pa = a.alt + Math.max(0, a.vs) * 12 / 60;     // where it will be once the pilot reacts
+      GS.acs.forEach(b => { if (b === a || b.done || b.pre || dist(a.pos, b.pos) > 14) return;
+        if (b.alt > pa - 300) tgt = Math.min(tgt, Math.max(4000, Math.floor((Math.min(b.alt, b.cfl) - 1000) / 1000) * 1000)); });
+      if (tgt < pa - 200) tgt = Math.max(4000, Math.ceil(pa / 1000) * 1000);   // stop the climb at the next level up
+      const cur = ui(a, 'cfl', a.cfl);
+      if (tgt !== cur && Math.abs(tgt - cur) >= 1000) { issue(a, 'cfl', tgt, q => cmdLevel(a, tgt, q)); return; }
+    }
+    const nearEdge = !inTMA(fromBrg(a.pos, a.hdg, 3));
+    if (!ui(a, 'xfr', false) && (r > 20 || nearEdge || (a.alt >= a.cfl - 300 && r > 14))) issue(a, 'xfr', true, q => cmdTransfer(a, q));
+  });
+  live.filter(a => a.kind === 'trn').forEach(a => {
+    if (!busy(a) && a.entered && dist(a.pos, [0, 0]) > 18 && !ui(a, 'xfr', false)) issue(a, 'xfr', true, q => cmdTransfer(a, q));
+  });
+}
+
 // ---- main loop ----
 let lastTs = null, acc = 0, chkAcc = 0, sweepAcc = 0;
 // ---- radar picture: refreshed every 4 s, like the real scope ----
@@ -1181,11 +1254,12 @@ function loop(ts) {
       }
       GS.acs.forEach(a => { if (a.done) return; runPending(a); if (!a.done) stepAc(a, 0.25); raceTrack(a); });
       sweepAcc += 0.25; if (sweepAcc >= RADAR_PERIOD) { sweepAcc = 0; GS.acs.forEach(a => { if (!a.done) sweepAc(a); }); }
-      chkAcc += 0.25; if (chkAcc >= 1) { chkAcc = 0; checks(); }
+      chkAcc += 0.25; if (chkAcc >= 1) { chkAcc = 0; checks(); demoTick(); }
       GS.acs = GS.acs.filter(a => !a.done || a === GS.sel);
       if (GS.sel && GS.sel.done) closeMenu();
       if (GS.mode === 'score' && !GS.free && GS.t >= SESSION) { endGame('Time is up.'); break; }
       if (!GS.sched.length && !GS.acs.some(a => !a.done) && GS.t > 120) {
+        if (GS.demo) { if (!GS.demoNext) setTimeout(() => { if (GS.demo) { chosen.rwy = st.rwy === '24' ? '06' : '24'; chosen.mode = 'demo'; $('start').onclick(); } }, 1500); GS.demoNext = true; break; }
         if (GS.free) { if (!GS.freeDone) { GS.freeDone = true; logMsg('All traffic handled. Press END to finish.', 'info'); } }
         else { endGame('All traffic handled.'); break; }
       }
@@ -1366,6 +1440,7 @@ function drawHdgDrag(fs) {
 const $ = id => document.getElementById(id);
 function updHud() {
   $('hScore').textContent = GS.score; $('hHand').textContent = GS.handled;
+  if (GS.demo) { $('hScoreL').textContent = 'DEMO ·'; $('hScore').textContent = LEVELS[GS.level].name; $('hTime').textContent = fmtClock(GS.t); return; }
   if (GS.mode === 'race') { $('hScoreL').textContent = 'PENALTY'; $('hScore').textContent = '+' + fmtClock(GS.penSec); $('hTime').textContent = fmtClock(GS.t); }
   else { $('hScoreL').textContent = GS.free ? 'FREE PLAY ·' : 'SCORE';
     $('hTime').textContent = GS.free ? '+' + fmtClock(GS.t - SESSION) : fmtClock(Math.max(0, SESSION - GS.t)); }
@@ -1626,13 +1701,15 @@ function showBest() {
     + '<br>Best race: ' + ['easy', 'medium', 'hard'].map(l => { const v = getBest(l, 'race'); return `${LEVELS[l].name} ${v == null ? '–' : fmtClock(v)}`; }).join(' · ');
 }
 $('start').onclick = () => {
-  st.rwy = chosen.rwy; GS.level = chosen.level; mapDirty = true;
+  const demo = chosen.mode === 'demo';
+  st.rwy = chosen.rwy; GS.level = demo ? 'medium' : chosen.level; mapDirty = true;
   Object.assign(GS, { on: true, over: false, t: 0, score: 0, handled: 0, acs: [], stats: {}, events: new Map(), lastLand: -999, paused: false,
-    mode: chosen.mode, free: false, freeDone: false, acTime: 0, penSec: 0, smi: null, rbls: [], rbDraft: null });
+    mode: demo ? 'score' : chosen.mode, demo, demoNext: false, free: demo, freeDone: false, acTime: 0, penSec: 0, smi: null, rbls: [], rbDraft: null });
   if (GS.mode === 'race') Math.random = seeded(['easy', 'medium', 'hard'].indexOf(GS.level) * 100 + +st.rwy); else Math.random = RND0;
-  GS.sched = applyLeads(buildSchedule(GS.level), st.rwy);
+  GS.sched = applyLeads(demo ? spaceArrivals(buildSchedule(GS.level), st.rwy, 170) : buildSchedule(GS.level), st.rwy);
   $('log').innerHTML = ''; $('startOv').hidden = true; $('endOv').hidden = true; closeMenu();
   $('hRwy').textContent = st.rwy; $('hLvl').textContent = LEVELS[GS.level].name;
+  if (demo) logMsg('Demo: the game is working the traffic itself. Press END to stop.', 'info');
   logMsg(`Luxembourg Radar open. RWY ${st.rwy} in use. ${LEVELS[GS.level].name}: ${GS.sched.length} aircraft${GS.mode === 'race' ? '. Race: get them all in safely, as fast as you can. Any separation infringement stops the race.' : ' in 40 minutes.'}`, 'info');
   updHud();
 };
@@ -1656,9 +1733,9 @@ function endGame(why) {
   $('cont').hidden = !(GS.mode === 'score' && why === 'Time is up.');
   $('endOv').hidden = false; showBest();
 }
-function backToStart() { GS.free = false; $('endOv').hidden = true; $('startOv').hidden = false; GS.on = false; GS.over = false; GS.acs = []; closeMenu(); closePick(); showBest(); updHud(); }
+function backToStart() { GS.free = false; GS.demo = false; $('endOv').hidden = true; $('startOv').hidden = false; GS.on = false; GS.over = false; GS.acs = []; closeMenu(); closePick(); showBest(); updHud(); }
 $('cont').onclick = () => { GS.free = true; GS.over = false; $('endOv').hidden = true; logMsg('Free play: the exercise continues without points. Press END to finish.', 'info'); updHud(); };
-function gameOver(msg) { addScore(-500, 'collision', msg); endGame(msg); }
+function gameOver(msg) { if (GS.demo) { if (!GS.events.has('nc' + msg)) { GS.events.set('nc' + msg, 1); logMsg(msg, 'bad'); } return; } addScore(-500, 'collision', msg); endGame(msg); }
 $('again').onclick = backToStart;
 
 const VIEW = [-2, 3];
