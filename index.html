@@ -138,7 +138,7 @@ html, body { margin: 0; padding: 0; overscroll-behavior: none; position: fixed; 
 
     <div class="ov" id="startOv">
       <div class="card">
-        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 43</div>
+        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 44</div>
         <h1>Luxembourg Approach</h1>
         <p>Work the approach position at Luxembourg Airport for 40 minutes. Vector arrivals onto the ILS, climb departures out on their SIDs and keep everyone separated.</p>
         <div class="pick"><span>Runway</span><button data-rwy="24" aria-pressed="true">24</button><button data-rwy="06" aria-pressed="false">06</button></div>
@@ -1254,9 +1254,12 @@ async function livePoll() {
   for (const [name, url] of LIVE_SRC) {
     try {
       const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 6000);
-      const r = await fetch(url(LAT0.toFixed(4), LON0.toFixed(4)), { cache: 'no-store', signal: ctl.signal }); clearTimeout(tm);
+      const uu = url(LAT0.toFixed(4), LON0.toFixed(4));
+      const r = await fetch(uu + (uu.includes('?') ? '&' : '?') + '_=' + Date.now(), { cache: 'no-store', signal: ctl.signal }); clearTimeout(tm);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json(); if (!GS.live) return;
+      const nw = +j.now || 0, ms = nw > 1e12 ? nw : nw * 1000;
+      if (ms && Date.now() - ms > 90000) throw new Error('stale');       // old snapshot: treat as a failure
       liveIngest(j.ac || j.aircraft || []); ok = true;
       if (GS.liveSrc !== name) logMsg(`Live data from ${name}.`, 'info');
       GS.liveSrc = name; GS.liveAt = Date.now(); break;

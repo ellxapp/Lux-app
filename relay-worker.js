@@ -42,13 +42,18 @@ export default {
     const lon = (+u.searchParams.get('lon') || 6.2044).toFixed(4);
     const r = Math.min(+u.searchParams.get('r') || 60, 100);
     const sources = [
-      `https://api.airplanes.live/v2/point/${lat}/${lon}/${r}`,
-      `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}`,
+      ['airplanes.live', `https://api.airplanes.live/v2/point/${lat}/${lon}/${r}`],
+      ['adsb.lol', `https://api.adsb.lol/v2/point/${lat}/${lon}/${r}`],
     ];
-    for (const s of sources) {
-      try {
-        const res = await fetch(s, { headers: { 'User-Agent': 'lux-app-live/1.0' }, cf: { cacheTtl: 4, cacheEverything: true } });
-        if (res.ok) return new Response(res.body, { headers: { ...cors, 'content-type': 'application/json', 'cache-control': 'max-age=4' } });
+    for (const [name, s] of sources) {
+      try {                                                   // no caching: always fresh, and reject stale snapshots
+        const res = await fetch(s + (s.includes('?') ? '&' : '?') + '_=' + Date.now(), { headers: { 'User-Agent': 'lux-app-live/1.0', 'Cache-Control': 'no-cache' }, cf: { cacheTtl: 0, cacheEverything: false } });
+        if (!res.ok) continue;
+        const j = await res.json();
+        const now = +j.now || 0, ms = now > 1e12 ? now : now * 1000;
+        if (ms && Date.now() - ms > 60000) continue;           // older than a minute: try the next source
+        j.src = name;
+        return json(j, 200, { 'cache-control': 'no-store' });
       } catch (e) { /* try the next source */ }
     }
     return json({ ac: [] }, 502);
