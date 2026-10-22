@@ -138,7 +138,7 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
 
     <div class="ov" id="startOv">
       <div class="card">
-        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 35</div>
+        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 36</div>
         <h1>Luxembourg Approach</h1>
         <p>Work the approach position at Luxembourg Airport for 40 minutes. Vector arrivals onto the ILS, climb departures out on their SIDs and keep everyone separated.</p>
         <div class="pick"><span>Runway</span><button data-rwy="24" aria-pressed="true">24</button><button data-rwy="06" aria-pressed="false">06</button></div>
@@ -1262,7 +1262,7 @@ async function livePoll() {
       GS.liveSrc = name; GS.liveAt = Date.now(); break;
     } catch (e) { /* try the next source */ }
   }
-  if (!ok && !GS.liveWarned) { GS.liveWarned = true; logMsg('Live data not reachable. It needs an internet connection and may be blocked inside the claude.ai preview; it works on the GitHub Pages version.', 'warn'); }
+  if (!ok && !GS.liveWarned) { GS.liveWarned = true; logMsg('Live data not reachable. Check the internet connection; the game will keep trying.', 'warn'); }
   if (ok) GS.liveWarned = false;
   if (GS.live) GS.liveTimer = setTimeout(livePoll, 5000);
 }
