@@ -100,6 +100,7 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
 .qw[class*="c-"] { border-top: 3px solid var(--c); padding-top: 3px; }
 .qcol button.fx { --c: #c7b2ff; }
 #mh { border-color: #ffb347; color: #ffb347; }
+.awake { color: #8dff9e; border: 1px solid #8dff9e; padding: 0 5px; font-size: 11px; letter-spacing: .08em; }
 .go.alt { background: transparent; color: #c9ccf5; margin-bottom: 8px; font-size: 13px; }
 .best { line-height: 1.6; color: #ffd36b; font-size: 12px; margin-top: 10px; text-align: center; }
 .help { position: absolute; z-index: 7; right: max(10px, env(safe-area-inset-right, 0px)); top: 10px; width: 380px; max-width: calc(100% - 20px);
@@ -137,7 +138,7 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
 
     <div class="ov" id="startOv">
       <div class="card">
-        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 33</div>
+        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 34</div>
         <h1>Luxembourg Approach</h1>
         <p>Work the approach position at Luxembourg Airport for 40 minutes. Vector arrivals onto the ILS, climb departures out on their SIDs and keep everyone separated.</p>
         <div class="pick"><span>Runway</span><button data-rwy="24" aria-pressed="true">24</button><button data-rwy="06" aria-pressed="false">06</button></div>
@@ -197,7 +198,7 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
     <div class="grp"><span class="lbl">TOOL</span><button id="gRb" aria-pressed="false" title="Range and bearing: drag between aircraft, fixes or points">R&amp;B</button><button id="gRbClr" title="Clear all range and bearing lines">CLR</button></div>
     <div class="grp"><span class="lbl">RNG</span><button id="zin">+</button><button id="zout">−</button><button id="zres">RST</button></div>
     <div class="grp"><button id="gPause" aria-pressed="false">PAUSE</button><button id="gSpeed">×1</button><button id="gFull" title="Full screen">FULL</button><button id="gHelp">HELP</button><button id="gEnd">END</button></div>
-    <div class="hud"><span><span id="hScoreL">SCORE</span> <b id="hScore">0</b></span><span>HANDLED <b id="hHand">0</b></span><span class="clock" id="hTime">40:00</span></div>
+    <div class="hud"><span id="hAwake" class="awake" hidden title="Screen kept awake">AWAKE</span><span><span id="hScoreL">SCORE</span> <b id="hScore">0</b></span><span>HANDLED <b id="hHand">0</b></span><span class="clock" id="hTime">40:00</span></div>
   </div>
 </div>
 
@@ -1215,6 +1216,17 @@ function cmdTransfer(a, p) {
   } else addScore(25, 'trnOk', `${a.cs} transit transferred.`);
 }
 
+// ---- keep the screen awake in Demo and Live (Screen Wake Lock; re-taken when the page is shown again) ----
+let WAKE_LOCK = null;
+async function wakeOn() {
+  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible' || WAKE_LOCK) return;
+  try { WAKE_LOCK = await navigator.wakeLock.request('screen'); WAKE_LOCK.addEventListener('release', () => { WAKE_LOCK = null; updHud(); }); }
+  catch (e) { WAKE_LOCK = null; }
+  updHud();
+}
+function wakeOff() { if (WAKE_LOCK) { WAKE_LOCK.release().catch(() => {}); WAKE_LOCK = null; } updHud(); }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && GS.on && (GS.demo || GS.live)) wakeOn(); });
+
 // ---- live mode: real ADS-B traffic around ELLX, view only ----
 const DEFAULT_RELAY = 'https://lux-adsb.pjmorgan.workers.dev';
 // A relay (e.g. a Cloudflare Worker) avoids the browser's cross-site block: set it once with ?relay=https://... in the page address.
@@ -1634,6 +1646,7 @@ function drawHdgDrag(fs) {
 const $ = id => document.getElementById(id);
 function updHud() {
   $('hScore').textContent = GS.score; $('hHand').textContent = GS.handled;
+  $('hAwake').hidden = !WAKE_LOCK;
   if (GS.live) { $('hScoreL').textContent = 'LIVE ·'; $('hScore').textContent = GS.acs.filter(a => !a.done).length + ' ac';
     $('hTime').textContent = GS.liveAt ? Math.round((Date.now() - GS.liveAt) / 1000) + ' s' : '--'; return; }
   if (GS.demo) { $('hScoreL').textContent = 'DEMO ·'; $('hScore').textContent = LEVELS[GS.level].name; $('hTime').textContent = fmtClock(GS.t); return; }
@@ -1919,6 +1932,7 @@ $('start').onclick = () => {
 function startTail(demo, live) {
   $('log').innerHTML = ''; $('startOv').hidden = true; $('endOv').hidden = true; closeMenu();
   $('hRwy').textContent = st.rwy; $('hLvl').textContent = LEVELS[GS.level].name;
+  if (demo || live) wakeOn(); else wakeOff();
   if (live) { $('hLvl').textContent = 'Live'; GS.sched = []; $('log').innerHTML = ''; logMsg('Live: real ADS-B traffic within 60 NM, view only. Tap an aircraft for details; R&B works. Colours are a guess from the flight path. Press END to stop.', 'info'); clearTimeout(GS.liveTimer); livePoll(); updHud(); return; }
   if (demo) logMsg(`Demo: the game is working the traffic itself (planned in ${GS.demoInfo.rounds + 1} test runs). Press END to stop.`, 'info');
   logMsg(`Luxembourg Radar open. RWY ${st.rwy} in use. ${LEVELS[GS.level].name}: ${GS.sched.length} aircraft${GS.mode === 'race' ? '. Race: get them all in safely, as fast as you can. Any separation infringement stops the race.' : ' in 40 minutes.'}`, 'info');
@@ -1944,7 +1958,7 @@ function endGame(why) {
   $('cont').hidden = !(GS.mode === 'score' && why === 'Time is up.');
   $('endOv').hidden = false; showBest();
 }
-function backToStart() { GS.runId = (GS.runId || 0) + 1; GS.free = false; GS.demo = false; GS.live = false; clearTimeout(GS.liveTimer); $('endOv').hidden = true; $('startOv').hidden = false; GS.on = false; GS.over = false; GS.acs = []; closeMenu(); closePick(); showBest(); updHud(); }
+function backToStart() { wakeOff(); GS.runId = (GS.runId || 0) + 1; GS.free = false; GS.demo = false; GS.live = false; clearTimeout(GS.liveTimer); $('endOv').hidden = true; $('startOv').hidden = false; GS.on = false; GS.over = false; GS.acs = []; closeMenu(); closePick(); showBest(); updHud(); }
 $('cont').onclick = () => { GS.free = true; GS.over = false; $('endOv').hidden = true; logMsg('Free play: the exercise continues without points. Press END to finish.', 'info'); updHud(); };
 function gameOver(msg) { if (GS.dry) { GS.dryEv.push({ k: 'collision', msg }); return; } if (GS.demo) { if (!GS.events.has('nc' + msg)) { GS.events.set('nc' + msg, 1); logMsg(msg, 'bad'); } return; } addScore(-500, 'collision', msg); endGame(msg); }
 $('again').onclick = backToStart;
