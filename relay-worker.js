@@ -47,7 +47,7 @@ export default {
     ];
     for (const [name, s] of sources) {
       try {                                                   // no caching: always fresh, and reject stale snapshots
-        const res = await fetch(s + (s.includes('?') ? '&' : '?') + '_=' + Date.now(), { headers: { 'User-Agent': 'lux-app-live/1.0', 'Cache-Control': 'no-cache' }, cf: { cacheTtl: 0, cacheEverything: false } });
+        const res = await fetch(s + (s.includes('?') ? '&' : '?') + '_=' + Date.now(), { headers: { 'User-Agent': 'lux-app-live/1.0', 'Cache-Control': 'no-cache' } });
         if (!res.ok) continue;
         const j = await res.json();
         const now = +j.now || 0, ms = now > 1e12 ? now : now * 1000;
