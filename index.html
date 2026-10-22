@@ -138,7 +138,7 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
 
     <div class="ov" id="startOv">
       <div class="card">
-        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 34</div>
+        <div class="eyebrow">ELLX · LUXEMBOURG RADAR 120.885 · build 35</div>
         <h1>Luxembourg Approach</h1>
         <p>Work the approach position at Luxembourg Airport for 40 minutes. Vector arrivals onto the ILS, climb departures out on their SIDs and keep everyone separated.</p>
         <div class="pick"><span>Runway</span><button data-rwy="24" aria-pressed="true">24</button><button data-rwy="06" aria-pressed="false">06</button></div>
@@ -173,7 +173,7 @@ html, body { overscroll-behavior: none; position: fixed; inset: 0; width: 100%; 
       <div class="hh"><b>HOW TO PLAY</b><button id="helpClose" aria-label="Close">✕</button></div>
       <p><b>Fast clearances.</b> Click a field in the label: the <b>CFL</b> for a level list, the <b>heading</b> field (H270 or XFL) for left/right turns and direct-to, the <b>speed</b> field (4th line) for speeds, the <b>runway</b> to clear the ILS (a second click hands an established arrival to TWR). <b>Drag from the aircraft</b> to give a heading; release on a fix for direct-to. Click the <b>callsign</b> for the full menu. Drag a label to move it. A white box means the pilot is waiting for you.</p>
       <p><b>DIK holding:</b> HOLD DIK (menu, heading list or keyboard HOLD) sends an arrival to the published hold: inbound 120°, right turns, 1 min legs, FL140 to 4000 ft, 230 kt. Give levels as usual. CLEARED ILS lets it leave at DIK on the transition; a heading or direct-to takes it straight out.</p>
-      <p><b>Keyboard:</b> select an aircraft, type and press Enter: H270, L270, R270, F110, A40, S200, S (own speed), D BREDI, I (ILS), T (transfer), X (request higher XFL), HOLD. Esc closes.</p>
+      <p><b>Keyboard:</b> select an aircraft, type and press Enter: H270, L270, R270, F110, A40, S200, S (own speed), D BREDI, I (ILS), CI (cancel ILS), T (transfer), X (request higher XFL), HOLD. Esc closes.</p>
       <p><b>Arrivals</b> (green) call in descending on their STAR and fly the RNAV transition on their own. Shorten the route with headings or direct-to, descend them (the shading shows the minimum vectoring altitude: light 3000 ft, dark 4000 ft, TILVI area 5000 ft), then <b>CLEARED ILS</b>. On a transition, CLEARED ILS is an ILS Z clearance via the IAF: descent to 3000 ft is approved and flown on the published profile and point restrictions. On headings or direct-to, a descent is a normal descent: never below the MRVA or the base of controlled airspace where the aircraft is. They keep their level on the localiser and intercept the glidepath from below: 3000 ft at about 6 NM, 4000 ft at about 9 NM, 5000 ft at about 12 NM. Once established on the localiser and glidepath, hand them to <b>TWR 118.105</b>, ideally between 12 and 4 NM final.</p>
       <p><b>Departures</b> (blue) call when airborne, climbing to 4000 ft on their SID. Climb them to their exit level (XFL in the menu). If you need more room, <b>REQ HIGHER XFL</b> asks the next unit; the answer comes after 10 s (Brussels FL180, Langen FL160, Paris FL240, Strasbourg FL190) and the new level appears in the level lists and <b>TRANSFER</b> before they leave the TMA. Traffic leaving to the south (GTQ, N852) may be kept until 25 NM south of AKELU. After transfer the next unit climbs them to their cruising level (RFL in the menu). GTQ departures should reach FL120 before LX772 (RWY 06) or LX896 (RWY 24), as in the Strasbourg LoA, or be recleared FL100 (no penalty in the game).
       <p><b>Transits</b> (yellow) cross at their level. Keep them clear of your traffic and transfer before they leave (southbound: until 25 NM south of AKELU).</p>
@@ -1198,6 +1198,17 @@ function cmdILS(a, p) {
   if (a.mode === 'hold') { a.hold.exit = true; return; }          // leaves the hold at DIK on the transition
   if (a.mode === 'route') { a.vnav = true; a.cfl = 3000; }   // ILS Z via an IAF/IF: descent to 3000 ft approved, flown on the published profile and point restrictions
 }
+function cmdCancelILS(a, p) {
+  if (p !== 'do') {                                   // stop at the next whole thousand in the direction of travel
+    const r = a.vs < -150 ? Math.floor : a.vs > 150 ? Math.ceil : Math.round;
+    a.cancelLvl = Math.max(3000, r(a.alt / 1000) * 1000);
+    say(a, `Cancel approach clearance, maintain ${sayLvl(a.cancelLvl)}, ${a.cs}.`);
+  }
+  if (p === 'rb') return;
+  a.clearedILS = false; a.vnav = false; a.gsCap = false; a.estab = false; a.cfl = a.cancelLvl || Math.max(3000, Math.round(a.alt / 1000) * 1000); a.attn = false;
+  if (a.mode === 'loc') { a.mode = 'hdg'; a.hdgSel = a.hdg; a.turnDir = 0; }        // continue on present heading
+  if (a.hold) a.hold.exit = false;
+}
 function cmdTransfer(a, p) {
   if (a.transferred) return false;
   if (a.kind === 'arr' && !(a.mode === 'loc' && a.estab && a.gsCap)) { if (p !== 'do') say(a, `${a.cs}, not yet established on the ILS.`, 'warn'); return false; }
@@ -1683,11 +1694,12 @@ function openMenu(a) {
   fillBtns('mSpd', sp.map(k => [String(k), () => issue(a, 'spd', k, q => cmdSpeed(a, k, q)), cs_ === k]).concat([['OWN', () => issue(a, 'spd', null, q => cmdSpeed(a, null, q)), cs_ == null]]));
   const fixes = dctFixes(a);
   fillBtns('mDct', fixes.map(f => [f, () => { issue(a, 'dct', f, q => cmdDirect(a, f, q)); if (a.ui) delete a.ui.hdg; }, ui(a, 'dct', a.mode === 'direct' ? a.directFix : null) === f]));
-  $('mIls').hidden = a.kind !== 'arr'; $('mIls').textContent = `CLEARED ILS ${st.rwy}`;
-  $('mIls').setAttribute('aria-pressed', !!ui(a, 'ils', a.clearedILS));
+  const ils = !!ui(a, 'ils', a.clearedILS);
+  $('mIls').hidden = a.kind !== 'arr' || a.transferred; $('mIls').textContent = ils ? `CANCEL ILS ${st.rwy}` : `CLEARED ILS ${st.rwy}`;
+  $('mIls').setAttribute('aria-pressed', ils);
   const xf = a.transferred || ui(a, 'xfr', false);
   $('mXfr').textContent = xf ? (a.kind === 'arr' ? 'WITH TWR' : 'TRANSFERRED') : a.kind === 'arr' ? 'TWR 118.105' : 'TRANSFER';
-  $('mXfr').disabled = !!xf; $('mXfr').setAttribute('aria-pressed', !!xf);
+  $('mXfr').setAttribute('aria-pressed', !!xf);
   $('mHold').hidden = a.kind !== 'arr' || a.transferred; $('mHold').setAttribute('aria-pressed', a.mode === 'hold');
   const rq = $('mReq'); rq.hidden = a.kind !== 'dep' || a.transferred;
   rq.textContent = a.xflUp ? `XFL ${sayLvl(a.xfl)} APPROVED` : a.xflReqT ? 'XFL REQUESTED…' : `REQ HIGHER XFL (${(NEXT_UNIT[a.exit] || ['Brussels'])[0]})`;
@@ -1699,7 +1711,7 @@ function fillBtns(id, items) {
   items.forEach(([t, fn, on]) => { const b = document.createElement('button'); b.textContent = t; b.setAttribute('aria-pressed', !!on);
     b.onclick = () => { fn(); refreshMenu(); }; el.appendChild(b); });
 }
-function refreshMenu() { if (GS.sel && !GS.sel.done) openMenu(GS.sel); }
+function refreshMenu() { if (GS.sel && !GS.sel.done && !menu.hidden) openMenu(GS.sel); }   // only when the menu is already open
 function closeMenu() { GS.sel = null; menu.hidden = true; }
 function placeMenu() {
   if (window.innerWidth < 640 || !GS.sel) { menu.style.left = ''; menu.style.top = ''; menu.classList.add('sheet'); return; }
@@ -1722,7 +1734,9 @@ $('mF').onclick = () => { const v = hdgVal(); if (v && GS.sel) { const a = GS.se
 $('mh').addEventListener('keydown', e => { if (e.key === 'Enter') $('mF').click(); });
 $('mHold').onclick = () => { const a = GS.sel; if (a) { issue(a, 'hold', true, q => cmdHold(a, q)); refreshMenu(); } };
 $('mReq').onclick = () => { const a = GS.sel; if (a) { cmdReqXfl(a); refreshMenu(); } };
-$('mIls').onclick = () => { const a = GS.sel; if (a) { issue(a, 'ils', true, q => cmdILS(a, q)); refreshMenu(); } };
+$('mIls').onclick = () => { const a = GS.sel; if (!a) return;
+  if (ui(a, 'ils', a.clearedILS)) issue(a, 'ils', false, q => cmdCancelILS(a, q)); else issue(a, 'ils', true, q => cmdILS(a, q));
+  refreshMenu(); };
 $('mXfr').onclick = () => { const a = GS.sel; if (a) { issue(a, 'xfr', true, q => cmdTransfer(a, q)); refreshMenu(); } };
 $('mLbl').onclick = () => { if (GS.sel) GS.sel.lblPin = null; };
 
@@ -1860,6 +1874,7 @@ function runCmd(txt) {
   let m;
   if (t === 'HOLD' || t === 'HD') return issue(a, 'hold', true, q => cmdHold(a, q)), refreshMenu();
   if (t === 'X' || t === 'XFL') return cmdReqXfl(a), refreshMenu();
+  if (t === 'CI' || t === 'CANCEL') return issue(a, 'ils', false, q => cmdCancelILS(a, q)), refreshMenu();
   if (t === 'I' || t === 'ILS') return issue(a, 'ils', true, q => cmdILS(a, q)), refreshMenu();
   if (t === 'T' || t === 'TX' || t === 'C') return issue(a, 'xfr', true, q => cmdTransfer(a, q)), refreshMenu();
   if ((m = t.match(/^([HLR])\s?(\d{1,3})$/))) { const h = (+m[2] % 360) || 360, d = m[1] === 'L' ? -1 : m[1] === 'R' ? 1 : 0;
