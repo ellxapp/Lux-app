@@ -178,7 +178,7 @@ export function runStudy(manifest,config,{commitSha,dirty=false,nodeVersion=proc
  // Check continuous backlog of valid, not-yet-processed traffic throughout the hour.
  let backlogAllHour=true;
  for(let t=c.measurementStartMs;t<c.measurementEndMs;t+=1000){
-   const waiting=rows.filter(r=>r.status!=='rejected'&&demandAtEvent(r)<=t&&r.plannedMs>t).length;
+   const waiting=rows.filter(r=>r.status!=='rejected'&&demandAtEvent(r)<=t&&(r.plannedMs??Infinity)>t).length;
    if(waiting===0){backlogAllHour=false;break;}
  }
  const eligible=violations===0&&slaInfringements===0&&totals.goArounds===0&&totals.rejected===0&&backlogAllHour;
@@ -191,7 +191,7 @@ export function runStudy(manifest,config,{commitSha,dirty=false,nodeVersion=proc
     sectorProcessedCount:totals.served,declaredCapacityInputOnly:c.declaredCapacityInputOnly??null},events,flights:rows};
 }
 export function csv(rows){
- const fields=['commitSha','nodeVersion','dirty','id','kind','aircraftType','wake','requestMs','plannedMs','timeMs','controlCrossingMs','delayMs','status','reason','binding','constraints'];
+ const fields=['commitSha','nodeVersion','dirty','id','kind','aircraftType','wake','requestMs','plannedMs','timeMs','controlCrossingMs','delayMs','status','reason','slaInfringement','binding','constraints'];
  const cell=x=>{const s=x===undefined||x===null?'':typeof x==='object'?JSON.stringify(x):String(x);
    return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
  return fields.join(',')+'\r\n'+rows.map(r=>fields.map(k=>cell(r[k])).join(',')).join('\r\n')+(rows.length?'\r\n':'');
