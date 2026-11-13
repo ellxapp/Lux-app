@@ -67,7 +67,8 @@ test('C3: piecewise speed produces compression near threshold',()=>{
  // 180 kt above 4 NM, 160 kt below: fixed temporal gap shrinks in distance.
  const leader=durationMs(c,c.controlM);
  const gap=85000;
- const initial=positionAt(c,leader+gap,0)-positionAt(c,leader,0);
+ const onFinal=gap+20000;
+ const initial=positionAt(c,leader+gap,onFinal)-positionAt(c,leader,onFinal);
  const final=positionAt(c,leader+gap,leader);
  assert.ok(initial>final,'downstream slow segment compresses along-track distance');
 });
