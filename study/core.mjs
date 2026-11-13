@@ -25,6 +25,9 @@ export function makeManifest({seed=42,count=60,stepMs=30000,startUtc='2026-01-01
 }
 export function validateConfig(c){
  requireValue(c&&['SYNTH','EUROCONTROL_2018','CAPAN_2025','LOCAL_ONLY'].includes(c.preset),'invalid preset');
+ const allowed=new Set(['preset','source','startUtc','controlM','profile','arrivalRotMs','departureAirborneAfterEntryMs','departureClearAfterEntryMs','afterDepartureAirborneBufferMs','sensitiveAfterClearMs','normalSlaM','mixedMediumSlaM','mixedHeavySlaM','surveillanceM','wakeFallbackM','wakeM','measurementStartMs','measurementEndMs','drainEndMs','sensitiveGateM','lvpSlaM','lvp','applyDeliveryError','declaredCapacityInputOnly','lvpRwy24HeavyVacateFlag']);
+ for(const name of Object.keys(c))requireValue(allowed.has(name),'unknown config field: '+name);
+ if(c.lvpRwy24HeavyVacateFlag!==undefined)requireValue(typeof c.lvpRwy24HeavyVacateFlag==='boolean','invalid LVP flag');
  requireValue(typeof c.startUtc==='string'&&c.startUtc.endsWith('Z')&&!Number.isNaN(Date.parse(c.startUtc)),'invalid UTC');
  const fields=['lvpSlaM','controlM','arrivalRotMs','departureAirborneAfterEntryMs','departureClearAfterEntryMs','afterDepartureAirborneBufferMs','sensitiveAfterClearMs','normalSlaM','mixedMediumSlaM','mixedHeavySlaM','surveillanceM','wakeFallbackM','measurementStartMs','measurementEndMs','drainEndMs','sensitiveGateM'];
  for(const f of fields)int(c[f],f);
