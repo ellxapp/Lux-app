@@ -9,12 +9,18 @@ Requires Node >=20 and git, run from a clean checkout:
     node --version
     node --test study/*.test.mjs
     node study/cli.mjs --config study/presets/SYNTH.json --out /tmp/lux-stage-a --count 30
-    node study/cli.mjs --config study/presets/EUROCONTROL_2018.json --out /tmp/lux-2018 --count 30
+    node study/cli.mjs --config study/presets/EUROCONTROL_2018.json --out /tmp/lux-2018 --count 30 --departure-modulo 0
 
 The CLI refuses dirty checkouts unless --allow-dirty is given. Outputs
 manifest.json, summary.json, events.json and flights.csv contain the full
 commit SHA, Node runtime, scenario provenance, a UTC origin and input digests.
 CSV uses UTF-8 and RFC4180 double-quote escaping with CRLF line endings.
+The per-flight CSV includes `slaInfringement`: a negative planning-spacing
+margin by itself leaves the movement **served**, records an SLA infringement,
+and makes the run ineligible for capacity claims. Only safety-constraint
+violations generate a go-around. A censored flight remains in the queue
+when its runway-event demand is in the past and it is not yet served.
+Use `--departure-modulo 0` for arrival-only demand; 4 is the default mix.
 Times are integer ms from startUtc; distances are integer metres in configs
 (1 NM = 1852 m). Intermediate simulation positions are floating-point and
 are rounded before recording. UTF-8 byte ordering breaks demand-time ties.
@@ -66,3 +72,18 @@ construction; its event-log hash cannot be reproduced without a later harness.
 Fixtures contain only SYN synthetic identifiers. Privacy scan scope:
 actual callsigns, registrations, ICAO24 addresses and operational datasets.
 The entire study/ directory becomes public if deployed via GitHub Pages.
+
+## Explicitly deferred to Stage A.1
+
+- Per-type/category speed profiles for fleet-mix and FTD/ITD comparisons.
+- RWY 24 LVP heavy-vacating behaviour: the flag is configuration-only.
+- A 2018 technical-capacity discrepancy report. The illustrative model
+  produced about 32 arrivals/h arrivals-only versus EUROCONTROL's historical
+  observed 21.2–21.3/h; this discrepancy is **not calibrated away**.
+- Distinct binding-margin tolerances in metres and milliseconds. Both are
+  currently 1000 in metadata and should not be interpreted as equivalent.
+
+Historical preset inputs beyond the precisely attributed items are synthetic,
+not certified operational settings. In particular the CAPAN_2025 preset's
+80s/240s effective intervals are *unsourced synthetic* model inputs and do
+not reproduce CAPAN's cited 120-second assumptions.
