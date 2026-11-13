@@ -1,0 +1,25 @@
+name: Study Stage A tests
+on:
+  pull_request:
+    paths:
+      - 'study/**'
+      - '.github/workflows/study-test.yml'
+  workflow_dispatch:
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --version
+      - run: node --test study/*.test.mjs
+      - name: Verify old app files are untouched
+        run: git diff --exit-code ef8737e1deed33327788d1319da1c232bd7cb027 HEAD -- index.html relay-worker.js README.md .nojekyll
+      - name: Synthetic outputs
+        run: |
+          node study/cli.mjs --config study/presets/SYNTH.json --out /tmp/lux-stage-a --count 30
+          node study/cli.mjs --config study/presets/EUROCONTROL_2018.json --out /tmp/lux-2018 --count 30
