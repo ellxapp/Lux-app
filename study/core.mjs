@@ -26,7 +26,7 @@ export function makeManifest({seed=42,count=60,stepMs=30000,startUtc='2026-01-01
 export function validateConfig(c){
  requireValue(c&&['SYNTH','EUROCONTROL_2018','CAPAN_2025','LOCAL_ONLY'].includes(c.preset),'invalid preset');
  requireValue(typeof c.startUtc==='string'&&c.startUtc.endsWith('Z')&&!Number.isNaN(Date.parse(c.startUtc)),'invalid UTC');
- const fields=['controlM','arrivalRotMs','departureAirborneAfterEntryMs','departureClearAfterEntryMs','afterDepartureAirborneBufferMs','sensitiveAfterClearMs','normalSlaM','mixedMediumSlaM','mixedHeavySlaM','surveillanceM','wakeFallbackM','measurementStartMs','measurementEndMs','drainEndMs','sensitiveGateM'];
+ const fields=['lvpSlaM','controlM','arrivalRotMs','departureAirborneAfterEntryMs','departureClearAfterEntryMs','afterDepartureAirborneBufferMs','sensitiveAfterClearMs','normalSlaM','mixedMediumSlaM','mixedHeavySlaM','surveillanceM','wakeFallbackM','measurementStartMs','measurementEndMs','drainEndMs','sensitiveGateM'];
  for(const f of fields)int(c[f],f);
  requireValue(c.controlM>c.mixedHeavySlaM && c.measurementStartMs<c.measurementEndMs && c.measurementEndMs<=c.drainEndMs,'control or window invalid');
  requireValue(c.departureClearAfterEntryMs>=c.departureAirborneAfterEntryMs,'departure event ordering');
@@ -120,14 +120,16 @@ export function runStudy(manifest,config,{commitSha,dirty=false,nodeVersion=proc
  requireValue(manifest&&manifest.synthetic===true&&manifest.schema===1&&Array.isArray(manifest.flights),'synthetic manifest only');
  requireValue(/^[a-f0-9]{40}$/.test(commitSha||''),'full commit SHA mandatory');
  requireValue(manifest.startUtc===c.startUtc,'UTC origin mismatch');
- const ordered=[...manifest.flights].sort(byDemand),ids=new Set(),rows=[],history=[],events=[];
  const controlTravel=durationMs(c,c.controlM);
+ // Compare demand at the same physical runway reference event, not ARR control-point demand vs DEP runway-entry demand.
+ const demandAtEvent=f=>f.requestMs+(f.kind==='ARR'?controlTravel:0);
+ const ordered=[...manifest.flights].sort((a,b)=>demandAtEvent(a)-demandAtEvent(b)||byteCompare(a.id,b.id)),ids=new Set(),rows=[],history=[],events=[];
  for(const input of ordered){
    const f=structuredClone(input);
    requireValue(typeof f.id==='string'&&!ids.has(f.id),'duplicate/invalid id');ids.add(f.id);
    try{validFlight(f);}catch(e){rows.push({...f,status:'rejected',reason:e.message,attempts:[],constraints:[]});continue;}
-   const demandAtEvent=f.requestMs+(f.kind==='ARR'?controlTravel:0);
-   let planned=demandAtEvent,attempts=[],found=false;
+   const eventDemand=demandAtEvent(f);
+   let planned=eventDemand,attempts=[],found=false;
    while(planned<=c.drainEndMs){
      const checks=evaluate(c,f,planned,history);
      attempts.push({plannedMs:planned,blockedBy:checks.filter(x=>!x.ok).map(x=>x.name)});
@@ -137,10 +139,12 @@ export function runStudy(manifest,config,{commitSha,dirty=false,nodeVersion=proc
    if(!found){rows.push({...f,status:'censored',reason:'drain-horizon',attempts,constraints:attempts.length?evaluate(c,f,c.drainEndMs,history):[]});continue;}
    const actual=planned+(c.applyDeliveryError&&f.kind==='ARR'?f.deliveryErrorMs:0);
    const constraints=evaluate(c,f,actual,history);
-   const failing=constraints.filter(x=>!x.ok);
+   // SLA is a planning/coordination target, not an automatic go-around safety minimum.
+   const slaShortfalls=constraints.filter(x=>x.name==='sla-threshold'&&!x.ok);
+   const failing=constraints.filter(x=>x.name!=='sla-threshold'&&!x.ok);
    const status=failing.length?'go-around':'served';
-   const row={...f,status,reason:failing.map(x=>x.name).join('|')||null,plannedMs:planned,timeMs:actual,
-     controlCrossingMs:f.kind==='ARR'?planned-controlTravel:null,delayMs:planned-demandAtEvent,
+   const row={...f,status,reason:failing.map(x=>x.name).join('|')||(slaShortfalls.length?'sla-infringement':null),slaInfringement:slaShortfalls.length>0,plannedMs:planned,timeMs:actual,
+     controlCrossingMs:f.kind==='ARR'?planned-controlTravel:null,delayMs:planned-eventDemand,
      attempts, constraints,binding:constraints.filter(x=>x.margin>=0&&x.margin<=1000).map(x=>x.name)};
    if(status==='served'){
      if(f.kind==='ARR'){
@@ -166,18 +170,19 @@ export function runStudy(manifest,config,{commitSha,dirty=false,nodeVersion=proc
  const totals={demand:rows.length,served:rows.filter(r=>r.status==='served').length,censored:rows.filter(r=>r.status==='censored').length,
    rejected:rows.filter(r=>r.status==='rejected').length,goArounds:rows.filter(r=>r.status==='go-around').length};
  requireValue(totals.demand===totals.served+totals.censored+totals.rejected+totals.goArounds,'conservation');
- const violations=rows.filter(r=>r.status==='go-around').reduce((n,r)=>n+r.constraints.filter(x=>!x.ok).length,0);
+ const violations=rows.filter(r=>r.status==='go-around').reduce((n,r)=>n+r.constraints.filter(x=>!x.ok&&x.name!=='sla-threshold').length,0);
+ const slaInfringements=rows.filter(r=>r.slaInfringement).length;
  // Check continuous backlog of valid, not-yet-processed traffic throughout the hour.
  let backlogAllHour=true;
  for(let t=c.measurementStartMs;t<c.measurementEndMs;t+=1000){
-   const waiting=rows.filter(r=>r.status!=='rejected'&&r.requestMs<=t&&(r.status!=='served'||r.timeMs>t)).length;
+   const waiting=rows.filter(r=>r.status!=='rejected'&&demandAtEvent(r)<=t&&r.plannedMs>t).length;
    if(waiting===0){backlogAllHour=false;break;}
  }
- const eligible=violations===0&&totals.goArounds===0&&totals.rejected===0&&backlogAllHour;
+ const eligible=violations===0&&slaInfringements===0&&totals.goArounds===0&&totals.rejected===0&&backlogAllHour;
  return {meta:{studyModelVersion:STUDY_MODEL_VERSION,commitSha,nodeVersion,dirty,preset:c.preset,
     source:c.source||null,seed:manifest.seed,manifestSha256:digest(manifest),configSha256:digest(c),startUtc:c.startUtc,
-    units:{time:'integer-ms',distance:'integer-m'},window:{startMs:c.measurementStartMs,endMs:c.measurementEndMs,drainEndMs:c.drainEndMs}},
-   totals,violations,capacity_eligible:eligible,capacity_label:eligible?'synthetic-saturation':'demand-limited-or-infeasible',
+    units:{time:'integer-ms',distance:'integer-m'},delaySearchStepMs:1000,bindingTolerance:{m:1000,ms:1000},window:{startMs:c.measurementStartMs,endMs:c.measurementEndMs,drainEndMs:c.drainEndMs}},
+   totals,violations,slaInfringements,capacity_eligible:eligible,capacity_label:eligible?'synthetic-saturation':'demand-limited-or-infeasible',
    backlogAllHour,metrics:{measurementArrivals:arrivals,measurementDepartures:deps,arrivalRatePerHour:arrivals*rate,
     departureRatePerHour:deps*rate,runwayRatePerHour:inWindow.length*rate,sectorDemandCount:ordered.length,
     sectorProcessedCount:totals.served,declaredCapacityInputOnly:c.declaredCapacityInputOnly??null},events,flights:rows};
