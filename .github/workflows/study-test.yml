@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --version
-      - run: node --test study/
+      - run: node --test study/*.test.mjs
       - name: Verify old app files are untouched
         run: git diff --exit-code "${{ github.event.pull_request.base.sha }}" HEAD -- index.html relay-worker.js README.md .nojekyll
       - name: Synthetic outputs
