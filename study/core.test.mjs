@@ -75,7 +75,7 @@ test('C3: piecewise speed produces compression near threshold',()=>{
 
 test('C4: runway physics and mixed-traffic SLA have separate constraints',()=>{
  const cfg=read('SYNTH');
- const r=simple([flight('ARR-A','ARR',0),flight('DEP-B','DEP',1000),flight('ARR-C','ARR',2000)],cfg);
+ const r=simple([flight('ARR-A','ARR',0),flight('DEP-B','DEP',300000),flight('ARR-C','ARR',100000)],cfg);
  assert.equal(r.totals.served,3);
  const dep=r.flights.find(x=>x.id==='DEP-B');
  const follower=r.flights.find(x=>x.id==='ARR-C');
@@ -131,4 +131,32 @@ test('historical presets are cited and marked as non-operational, current not bu
   assert.match(c.source,/2019|2025/);
   assert.equal(c.lvp,false);
  }
+});
+
+test('B1: runway event demand order places DEP at 60s before ARR crossing at 250s',()=>{
+ const c=read('SYNTH');
+ const r=simple([flight('A','ARR',0),flight('D','DEP',60000)],c);
+ assert.deepEqual(r.flights.map(x=>x.id),['D','A']);
+ assert.equal(r.flights[0].timeMs,60000);
+ assert.equal(r.flights[0].delayMs,0);
+});
+
+test('B2: undelayed arrival stream is not a saturated backlog',()=>{
+ const c=read('SYNTH');
+ const fs=Array.from({length:30},(_,i)=>flight('S'+i,'ARR',i*200000));
+ const r=simple(fs,c);
+ assert.equal(r.flights.reduce((x,f)=>Math.max(x,f.delayMs||0),0),0);
+ assert.equal(r.capacity_eligible,false);
+});
+
+test('B3: SLA planning shortfall is logged, not automatically a go-around',()=>{
+ const c=read('SYNTH');c.applyDeliveryError=true;
+ const r=simple([flight('A','ARR',0),flight('B','ARR',0,-8000)],c);
+ const b=r.flights[1];
+ assert.equal(b.status,'served');
+ assert.equal(b.slaInfringement,true);
+ assert.ok(b.constraints.find(x=>x.name==='sla-threshold').margin<0);
+ assert.equal(r.slaInfringements,1);
+ assert.equal(r.totals.goArounds,0);
+ assert.equal(r.capacity_eligible,false);
 });
