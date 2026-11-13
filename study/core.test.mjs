@@ -167,3 +167,25 @@ test('N3: missing LVP spacing and unknown config keys are rejected',()=>{
  const bad=read('SYNTH');bad.typoField=5;
  assert.throws(()=>simple([],bad),/unknown config field/);
 });
+
+
+test('B2a: censored arrivals remain in saturated waiting backlog through measurement end',()=>{
+ const c=read('SYNTH');
+ c.measurementStartMs=600000;
+ c.measurementEndMs=2400000;
+ c.drainEndMs=2400000;
+ const fs=Array.from({length:40},(_,i)=>flight('C'+String(i).padStart(3,'0'),'ARR',0));
+ const r=simple(fs,c);
+ assert.ok(r.totals.censored>0,'test must exercise censored arrivals');
+ assert.ok(r.totals.served>0,'test must exercise served arrivals');
+ assert.equal(r.backlogAllHour,true);
+ assert.equal(r.capacity_eligible,true);
+});
+
+test('SLA infringement is explicit in per-flight CSV',()=>{
+ const c=read('SYNTH');c.applyDeliveryError=true;
+ const r=simple([flight('A','ARR',0),flight('B','ARR',0,-8000)],c);
+ const out=csv(r.flights);
+ assert.ok(out.split('\r\n')[0].includes('slaInfringement'));
+ assert.ok(out.includes('true'));
+});
