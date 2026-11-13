@@ -7,7 +7,7 @@ not be used for operational spacing, runway release or capacity decisions.
 Requires Node >=20 and git, run from a clean checkout:
 
     node --version
-    node --test study/
+    node --test study/*.test.mjs
     node study/cli.mjs --config study/presets/SYNTH.json --out /tmp/lux-stage-a --count 30
     node study/cli.mjs --config study/presets/EUROCONTROL_2018.json --out /tmp/lux-2018 --count 30
 
