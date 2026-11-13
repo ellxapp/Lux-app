@@ -160,3 +160,10 @@ test('B3: SLA planning shortfall is logged, not automatically a go-around',()=>{
  assert.equal(r.totals.goArounds,0);
  assert.equal(r.capacity_eligible,false);
 });
+
+test('N3: missing LVP spacing and unknown config keys are rejected',()=>{
+ const c=read('SYNTH');delete c.lvpSlaM;c.lvp=true;
+ assert.throws(()=>simple([flight('A','ARR',0)],c),/lvpSlaM/);
+ const bad=read('SYNTH');bad.typoField=5;
+ assert.throws(()=>simple([],bad),/unknown config field/);
+});
