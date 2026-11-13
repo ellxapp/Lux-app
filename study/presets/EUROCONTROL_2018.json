@@ -1,0 +1,45 @@
+{
+  "preset": "EUROCONTROL_2018",
+  "source": "EUROCONTROL Evaluation de la capacité aéroportuaire Aéroport de Luxembourg Findel, Edition 1.0, 27 June 2019. Summary p.1 (arrival ROT category means 66-109s; departure ROT category means 89-122s), §5.3.3 p.31 (8 NM ADA practice, proposal to reduce to 7 NM), Tables 6-7 pp.38-39 (technical capacity), Annex A1.4 pp.51-60 (exit/category charts). Historical *mechanics reference* only. 87500 ms ROT here is UNSOURCED midpoint proxy, not an observed aircraft-category value or distribution. Other timing/velocity fields are synthetic unless source expressly cited.",
+  "startUtc": "2026-01-01T00:00:00.000Z",
+  "controlM": 22224,
+  "profile": [
+    {
+      "toM": 7408,
+      "iasKt": 180,
+      "headwindKt": 0
+    },
+    {
+      "toM": 0,
+      "iasKt": 160,
+      "headwindKt": 0
+    }
+  ],
+  "arrivalRotMs": 87500,
+  "departureAirborneAfterEntryMs": 60000,
+  "departureClearAfterEntryMs": 80000,
+  "afterDepartureAirborneBufferMs": 10000,
+  "sensitiveAfterClearMs": 15000,
+  "normalSlaM": 9260,
+  "mixedMediumSlaM": 14816,
+  "mixedHeavySlaM": 14816,
+  "surveillanceM": 7408,
+  "wakeFallbackM": 9260,
+  "wakeM": {
+    "H": {
+      "H": 9260,
+      "M": 9260
+    },
+    "M": {
+      "H": 9260,
+      "M": 9260
+    }
+  },
+  "measurementStartMs": 1800000,
+  "measurementEndMs": 5400000,
+  "drainEndMs": 7200000,
+  "sensitiveGateM": 3704,
+  "lvpSlaM": 18520,
+  "lvp": false,
+  "applyDeliveryError": false
+}
