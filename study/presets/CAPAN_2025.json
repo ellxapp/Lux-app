@@ -1,0 +1,45 @@
+{
+  "preset": "CAPAN_2025",
+  "source": "EUROCONTROL Luxembourg TMA CAPAN Study Final Results Report, 8 December 2025, §4 p.18 (120s arrival/departure intervals, LVP 180/210/300s, 120/180s departure spacing), §6 pp.39-40 and §7 pp.41-42 (TMA sector capacity). CAPAN models 5 NM final, NOT established as present-day legal minimum. This preset is a SYNTHETIC runway-only approximation, NOT RCAPAN or CAPAN workload reproduction. ROT and speed inputs are illustrative synthetic values, not CAPAN observations.",
+  "startUtc": "2026-01-01T00:00:00.000Z",
+  "controlM": 22224,
+  "profile": [
+    {
+      "toM": 7408,
+      "iasKt": 180,
+      "headwindKt": 0
+    },
+    {
+      "toM": 0,
+      "iasKt": 160,
+      "headwindKt": 0
+    }
+  ],
+  "arrivalRotMs": 80000,
+  "departureAirborneAfterEntryMs": 120000,
+  "departureClearAfterEntryMs": 120000,
+  "afterDepartureAirborneBufferMs": 120000,
+  "sensitiveAfterClearMs": 15000,
+  "normalSlaM": 9260,
+  "mixedMediumSlaM": 14816,
+  "mixedHeavySlaM": 18520,
+  "surveillanceM": 9260,
+  "wakeFallbackM": 9260,
+  "wakeM": {
+    "H": {
+      "H": 9260,
+      "M": 9260
+    },
+    "M": {
+      "H": 9260,
+      "M": 9260
+    }
+  },
+  "measurementStartMs": 1800000,
+  "measurementEndMs": 5400000,
+  "drainEndMs": 7200000,
+  "sensitiveGateM": 3704,
+  "lvpSlaM": 18520,
+  "lvp": false,
+  "applyDeliveryError": false
+}
