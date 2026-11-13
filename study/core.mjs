@@ -183,7 +183,7 @@ export function runStudy(manifest,config,{commitSha,dirty=false,nodeVersion=proc
     sectorProcessedCount:totals.served,declaredCapacityInputOnly:c.declaredCapacityInputOnly??null},events,flights:rows};
 }
 export function csv(rows){
- const fields=['id','kind','aircraftType','wake','requestMs','plannedMs','timeMs','controlCrossingMs','delayMs','status','reason','binding','constraints'];
+ const fields=['commitSha','nodeVersion','dirty','id','kind','aircraftType','wake','requestMs','plannedMs','timeMs','controlCrossingMs','delayMs','status','reason','binding','constraints'];
  const cell=x=>{const s=x===undefined||x===null?'':typeof x==='object'?JSON.stringify(x):String(x);
    return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
  return fields.join(',')+'\r\n'+rows.map(r=>fields.map(k=>cell(r[k])).join(',')).join('\r\n')+(rows.length?'\r\n':'');
