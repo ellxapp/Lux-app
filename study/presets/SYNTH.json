@@ -1,0 +1,45 @@
+{
+  "preset": "SYNTH",
+  "source": "Synthetic mechanics-only values. Not an ELLX procedure.",
+  "startUtc": "2026-01-01T00:00:00.000Z",
+  "controlM": 22224,
+  "profile": [
+    {
+      "toM": 7408,
+      "iasKt": 180,
+      "headwindKt": 0
+    },
+    {
+      "toM": 0,
+      "iasKt": 160,
+      "headwindKt": 0
+    }
+  ],
+  "arrivalRotMs": 80000,
+  "departureAirborneAfterEntryMs": 60000,
+  "departureClearAfterEntryMs": 80000,
+  "afterDepartureAirborneBufferMs": 10000,
+  "sensitiveAfterClearMs": 15000,
+  "normalSlaM": 7408,
+  "mixedMediumSlaM": 14816,
+  "mixedHeavySlaM": 18520,
+  "surveillanceM": 5556,
+  "wakeFallbackM": 5556,
+  "wakeM": {
+    "H": {
+      "H": 5556,
+      "M": 7408
+    },
+    "M": {
+      "H": 5556,
+      "M": 5556
+    }
+  },
+  "measurementStartMs": 1800000,
+  "measurementEndMs": 5400000,
+  "drainEndMs": 7200000,
+  "sensitiveGateM": 3704,
+  "lvpSlaM": 18520,
+  "lvp": false,
+  "applyDeliveryError": false
+}
