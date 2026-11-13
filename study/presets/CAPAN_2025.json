@@ -1,6 +1,6 @@
 {
   "preset": "CAPAN_2025",
-  "source": "EUROCONTROL Luxembourg TMA CAPAN Study Final Results Report, 8 December 2025, §4 p.18 (120s arrival/departure intervals, LVP 180/210/300s, 120/180s departure spacing), §6 pp.39-40 and §7 pp.41-42 (TMA sector capacity). CAPAN models 5 NM final, NOT established as present-day legal minimum. This preset is a SYNTHETIC runway-only approximation, NOT RCAPAN or CAPAN workload reproduction. ROT and speed inputs are illustrative synthetic values, not CAPAN observations.",
+  "source": "EUROCONTROL Luxembourg TMA CAPAN Study Final Results Report, 8 December 2025, §4 p.18 (120s arrival/departure intervals, LVP 180/210/300s, 120/180s departure spacing), §6 pp.39-40 and §7 pp.41-42 (TMA sector capacity). CAPAN models 5 NM final, NOT established as present-day legal minimum. This preset is a SYNTHETIC runway-only approximation, NOT RCAPAN or CAPAN workload reproduction. ROT and speed inputs are illustrative synthetic values, not CAPAN observations. IMPORTANT: Arrival-to-departure and departure-to-arrival timing mappings in this simplified preset are UNSOURCED SYNTHETIC values (80s arrival ROT; 240s entry-to-next-arrival). They do NOT reproduce CAPAN 120s event intervals. No CAPAN capacity calibration claimed.",
   "startUtc": "2026-01-01T00:00:00.000Z",
   "controlM": 22224,
   "profile": [
