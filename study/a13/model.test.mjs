@@ -185,7 +185,7 @@ test('C1: ready times are bunched, deterministic and preserve exactly all demand
  assert.equal(a.times.length,32);
  assert.ok(a.clusters<32);
  assert.ok(a.times.some((t,i)=>i>0&&t-a.times[i-1]<=60000));
- assert.equal(a.source,'FITTED_TO_SEP2026_TAKEOFF_INTERVALS');
+ assert.equal(a.source,'FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT');
  const m=fixture(CONFIG,16,1);
  assert.deepEqual(m.departures.map(x=>x.requestMs),a.times);
  assert.equal(m.readyTimeProcess.wave,'early');
