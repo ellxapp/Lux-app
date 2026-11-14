@@ -8,8 +8,8 @@ with Philip's conditional-line-up decision in comment 6870125771.
 
 ## What changes and what does not
 
-Four matched cases use exactly one immutable generated synthetic traffic
-manifest: LINEUP_BEHIND_LANDING (ELLX baseline) or
+At **each of three 18, 20 and 22 ARR/hour demand levels**, four matched
+cases use exactly one immutable generated synthetic traffic manifest: LINEUP_BEHIND_LANDING (ELLX baseline) or
 SEQUENTIAL_AFTER_RUNWAY_CLEAR (conservative sensitivity), each with
 DISTANCE (8/10 NM APP–TWR planning request) or TIME (explicit
 ARR→DEP→ARR physical timing) planning. Only the prescribed policy/sequence
@@ -25,6 +25,27 @@ post-airborne buffer. Conservative sensitivity begins line-up only after
 runway clear. Actual conditional line-up location/procedural safeguards are
 not represented. No LVP, CAT I exception, runway exit or DEP–DEP gate rule
 is implemented.
+
+**B1 corrected ARR–ARR delivery:** every follower (whether or not a departure
+is proposed between arrivals) carries a frozen `effectiveTargetM` drawn using
+the *exact A1.1 locked eight-parameter two-component distribution*
+(SHA-256 `be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb`).
+The A1.1 assignment function is reused, with per-flight normal and component
+quantiles frozen in each manifest before scenarios run. Each follower's
+required ARR–ARR time is at least the time needed to deliver its locked
+equivalent track-miles target, and the existing surveillance/wake common-final
+floor. After a departure, queued arrivals **cannot recover time by closing up
+to the 3 NM surveillance floor** instead of the locked delivered spacing.
+No retuning or fresh calibration is performed. A1.1 remains a descriptive
+statistical arrival-spacing baseline, not observed vectoring geometry.
+
+Demand levels use **36, 40 and 44 ARR requests over two hours** respectively,
+equivalent to 18/20/22 ARR/hour, on separate seeded manifestations. The same
+manifest is reused in all four policies for a given demand level; a separate
+manifest is used at each demand level. A one-hour measurement window is
+reported, with the full two-hour horizon and drain status also retained.
+The new demand rates are scenarios, not a declaration of observed ELLX
+demand or an achieved capacity level.
 
 The four categories of interval are NOT the same as safety minima: the
 8/10 NM values are planning requests and remain distinct from hard
@@ -57,7 +78,11 @@ protection. The independently published eight-day holdout values are
 pairs), and neither is an A1.2 fitting target. All source records stay
 internal; only Philip-approved pooled aggregates appear in the repository.
 
-The generator deliberately creates demand, not measured 2026 traffic.
+**All throughput, slack and delay comparisons are CONDITIONAL ON UNVALIDATED
+GROUND-EVENT DURATIONS**, specifically arrival runway occupancy, conditional
+line-up, take-off roll, post-airborne buffer and the illustrative 90-second
+arrival deferral ceiling. No resulting difference is an established capacity
+benefit. The generator deliberately creates demand, not measured 2026 traffic.
 Arrival/departure rates are explicitly *synthetic realised movements per
 measurement hour*, never a certification of technical runway capacity.
 A missed departure opportunity is censored, not dropped. Runway-event
@@ -85,7 +110,8 @@ intersection modelling, runway-entry taxi physics, controller workload,
 taxi queue, departure-to-departure constraints, capacity declaration
 or movement-file replay. A requested departure that cannot fit without
 exceeding the configured maximum ARR deferral is counted as a
-missed/censored opportunity. Physical and planning slack are recorded
+missed/censored opportunity. Every arrival-only pair retains the locked A1.1
+spacing requirement, independent of acceptance of departures. Physical and planning slack are recorded
 separately. Per-flight aircraft and requested-event times are generated
 synthetically. This is a first candidate for independent review, not
 operational approval.
