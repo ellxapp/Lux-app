@@ -154,3 +154,25 @@ demand saturation, comparisons are marked NOT_COMPARABLE.
   and includes 3600 / fitted interval median against the 2018
   observed/optimal arrival-only references. This is a labelled
   arithmetic cross-check, never a capacity fit target.
+
+## Git history requirement for holdout validation
+
+`study/a11/validate-cli.mjs` uses `git log -1 --format=%H --
+study/a11/calibration-lock.json` to obtain the exact commit that last changed
+the lock file. It also checks that the working tree is clean, the lock is
+tracked, and the lock's bytes and blob match Philip's separate approval
+attestation. **A shallow checkout may not contain the lock-writing commit**,
+causing validation to fail even when the file is present. Use a complete
+repository history, for example:
+
+    git clone https://github.com/ellxapp/Lux-app.git
+    cd Lux-app
+    git fetch --unshallow  # only if the clone is already shallow
+    node study/a11/validate-cli.mjs --out /tmp/a11-holdout-evaluation.json
+
+For GitHub Actions use `actions/checkout` with `fetch-depth: 0` (as the
+Study workflow does). Do not substitute the current HEAD for the lock-writing
+commit: later README, attestation or holdout commits are *not* the immutable
+lock commit. The validated lock is the approved candidate digest
+`be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb`,
+recorded separately from the export's digest.
