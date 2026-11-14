@@ -6,7 +6,7 @@ import {DEFAULT_CONFIG,validateConfig,makeManifest,validateManifest,timeline,
  feasibility,simulate,pairedScenarios,minArrivalThresholdGapMs,
  CONDITIONAL,SEQUENTIAL,DISTANCE,TIME,APPROVED_A11_LOCK_SHA256,A11_SPACING_PROVENANCE,
  configForDemandLevel,compareDemandLevels} from './model.mjs';
-import {profileFor,timeToGoMs,assignEffectiveTargets} from '../a11/model.mjs';
+import {profileFor,timeToGoMs,assignEffectiveTargets,APPROVED_TYPE_WEIGHTS} from '../a11/model.mjs';
 const clone=x=>structuredClone(x);
 const simpleArr=(id,requestMs,type='B738',wake='M',headwindKt=0)=>
  ({id,kind:'ARR',requestMs,type,wake,headwindKt,runway:'24'});
@@ -20,7 +20,8 @@ const synthetic=(arrivals,departures=[])=>{
  return {schema:12,synthetic:true,seed:DEFAULT_CONFIG.seed,
  startUtc:'2026-01-01T00:00:00.000Z',arrivals:assigned.flights[0].map(a=>({...a,
   arrivalSpacingSource:A11_SPACING_PROVENANCE.distribution})),opportunities:departures,
- a11LockSha256:APPROVED_A11_LOCK_SHA256,a11ParametersSha256:digest(lock.parameters)};
+ a11LockSha256:APPROVED_A11_LOCK_SHA256,a11ParametersSha256:digest(lock.parameters),
+ a11FleetWeightsSha256:digest(APPROVED_TYPE_WEIGHTS)};
 };
 test('A12/E1: named partial order allows line-up to overlap ROT; roll not before clear',()=>{
  const t=timeline(100000,100000,'MEDIUM_JET',CONDITIONAL);
@@ -117,6 +118,7 @@ test('B1: identical arrival targets remain fixed when a departure is inserted, s
 test('B1: immutable per-flight normals/component quantiles are required and no runner random draw',()=>{
  const c=configForDemandLevel(DEFAULT_CONFIG,20),m=makeManifest(c);
  assert.equal(m.arrivals.length,40);
+ assert.equal(m.a11FleetWeightsSha256,digest(APPROVED_TYPE_WEIGHTS));
  assert.ok(m.arrivals.some(x=>x.effectiveTargetComponent==='TAIL'));
  assert.ok(m.arrivals.some(x=>x.effectiveTargetComponent==='CORE'));
  const noTarget=structuredClone(m);delete noTarget.arrivals[1].effectiveTargetM;
@@ -142,6 +144,9 @@ test('B1: 18/20/22 per hour demands are paired independently and reported at all
   assert.equal(new Set(level.scenarios.map(s=>s.meta.manifestSha256)).size,1);
   assert.ok(level.scenarios.every(s=>s.totals.demand===level.requestedArrivals+level.requestedDepartureOpportunities));
   assert.ok(level.scenarios.every(s=>s.metrics.capacityEligible===false));
+  assert.ok(level.lockedArrivalFloorRaising.targets===level.requestedArrivals-1);
+  assert.ok(level.lockedArrivalFloorRaising.shareRaised>=0 &&
+   level.lockedArrivalFloorRaising.shareRaised<=1);
  }
 });
 test('A12/E5: exact zero-slack threshold served and negative slack opportunity rejected',()=>{
