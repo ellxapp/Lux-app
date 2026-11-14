@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {digest} from '../core.mjs';
 import {CONFIG,VERSION,A11_LOCK_SHA256,validateConfig,fittedSpeedContrast,
- makeManifest,validateManifest,gateCrossings,simulate,comparePair,replicate} from './model.mjs';
+ makeManifest,validateManifest,gateCrossings,simulate,comparePair,replicate,
+ bunchedReadyTimes,evaluateTakeoffIntervalGate} from './model.mjs';
 
 const clone=x=>structuredClone(x);
 const fixture=(c=CONFIG,rate=16,bg=1,seed=20261114)=>makeManifest(c,
@@ -158,4 +159,68 @@ test('A3: deliberate co-requested same-exit TP then jet can swap under 120s limi
   if(x.status==='served'&&original.status==='served')
    assert.ok(x.airborneMs-original.airborneMs<=120000);
  }
+});
+
+test('C1: fixed 50-seed fitted early and late observed takeoff gates both PASS',()=>{
+ const r=evaluateTakeoffIntervalGate(CONFIG,{seeds:50});
+ assert.equal(r.label,'FITTED_TO_SEP2026_TAKEOFF_INTERVALS');
+ assert.equal(r.overall,'PASS');
+ for(const [wave,observedMedian,observedShare,background] of [
+  ['early',120,.51,1],['late',180,.38,7]]){
+  const x=r[wave];
+  assert.equal(x.gate.status,'PASS');
+  assert.ok(Math.abs(x.model.medianS-observedMedian)<=30);
+  assert.ok(Math.abs(x.model.shareLE120-observedShare)<=.10);
+  assert.equal(x.inputs.backgroundArrivalsPerHour,background);
+  assert.equal(x.inputs.seedCount,50);
+  assert.ok(x.model.intervals>0);
+  assert.equal(x.gate.sameExitShare,'REPORT_ONLY');
+  assert.ok(Number.isFinite(x.residual.p10Seconds)&&Number.isFinite(x.residual.p90Seconds));
+ }
+});
+test('C1: ready times are bunched, deterministic and preserve exactly all demand',()=>{
+ const a=bunchedReadyTimes(CONFIG,20261114,32,1);
+ const b=bunchedReadyTimes(CONFIG,20261114,32,1);
+ assert.deepEqual(a,b);
+ assert.equal(a.times.length,32);
+ assert.ok(a.clusters<32);
+ assert.ok(a.times.some((t,i)=>i>0&&t-a.times[i-1]<=60000));
+ assert.equal(a.source,'FITTED_TO_SEP2026_TAKEOFF_INTERVALS');
+ const m=fixture(CONFIG,16,1);
+ assert.deepEqual(m.departures.map(x=>x.requestMs),a.times);
+ assert.equal(m.readyTimeProcess.wave,'early');
+});
+test('C1: 50-seed comparison has accepted feasible swaps and reports paired gate-time changes',()=>{
+ const r=replicate(CONFIG);
+ assert.ok(r.cases.some(x=>x.swapAudit.acceptedTotal>0));
+ for(const x of r.cases){
+  assert.equal(x.swapAudit.eligibleTotal,
+   x.swapAudit.acceptedTotal+Math.round(x.swapAudit.rejectedSwaps.mean*50));
+  assert.ok(x.swapAudit.seedShareWithAcceptedSwaps>=0&&
+   x.swapAudit.seedShareWithAcceptedSwaps<=1);
+  assert.ok(x.pairedGate40GapCandidateMinusFIFO.medianS.n>0);
+  assert.ok(x.pairedGate40GapCandidateMinusFIFO.p10S.n>0);
+  assert.equal(x.acceptance.allConserved,true);
+  assert.equal(x.swapAudit.ctotAtfm,'NOT_MODELLED');
+ }
+});
+test('N1: 260/300/340 kt sensitivity keeps contrast residuals and identical manifests',()=>{
+ const anchors=[260,300,340].map(jet=>fittedSpeedContrast(CONFIG,jet));
+ for(const [i,jet] of [260,300,340].entries()){
+  assert.equal(anchors[i].jetKt,jet);
+  assert.equal(anchors[i].modelSeconds['TP-J'],-119.5);
+  assert.equal(anchors[i].modelSeconds['J-TP'],119.5);
+  assert.equal(anchors[i].residualModelMinusObservedSeconds['TP-J'],.5);
+  assert.ok(anchors[i].tpKt<jet);
+ }
+ assert.ok(anchors[0].tpKt<anchors[1].tpKt&&anchors[1].tpKt<anchors[2].tpKt);
+ const m=fixture(),before=digest(m);
+ const runs=[260,300,340].map(jetAnchorKt=>comparePair(m,CONFIG,{jetAnchorKt}));
+ assert.equal(digest(m),before);
+ assert.ok(runs.every(x=>x.manifestSha256===before));
+ assert.ok(runs.every(x=>x.candidate.metrics.departuresInHour===runs[1].candidate.metrics.departuresInHour));
+ const follower=m.departures[0],d260=gateCrossings(follower,0,CONFIG,anchors[0]),
+  d340=gateCrossings(follower,0,CONFIG,anchors[2]);
+ if(!follower.gateMissing40)
+  assert.ok(d260.crossings.RADIAL_40_NM.timeMs>d340.crossings.RADIAL_40_NM.timeMs);
 });
