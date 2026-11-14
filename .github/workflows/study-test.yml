@@ -32,6 +32,15 @@ jobs:
           if-no-files-found: error
       - name: Historical discrepancy report (not calibration)
         run: node study/a11/2018-cli.mjs /tmp/a11-2018-discrepancy.json
+      - name: Read-only September holdout validation (sealed lock)
+        run: node study/a11/validate-cli.mjs --out /tmp/a11-holdout-evaluation.json
+      - name: Publish holdout validation report only (pooled metrics)
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11-holdout-readonly-report
+          path: /tmp/a11-holdout-evaluation.json
+          retention-days: 14
+          if-no-files-found: error
       - name: Synthetic outputs
         run: |
           node study/cli.mjs --config study/presets/SYNTH.json --out /tmp/lux-stage-a --count 30
