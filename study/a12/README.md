@@ -134,6 +134,55 @@ lock-writing commit (checkout fetch-depth: 0) for its sealed holdout CLI.
 A1.1 source lock SHA-256 remains
 be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb.
 
+
+## B3: replicated paired analysis and N2 demand meaning
+
+Claude's PR #3 review 5903350016 found that isolated one-seed rates
+(4–9 DEP/h) are not reliable study results. This version replicates the
+**same 50 fixed seeds** independently at 18, 20, 21 and 22 ARR/h for
+each of two departure-demand profiles. Each seed produces all four paired
+LINEUP_BEHIND_LANDING/SEQUENTIAL_AFTER_RUNWAY_CLEAR × DISTANCE/TIME
+runs with the **identical frozen A1.1 manifest** for that demand and
+profile. Do not pair different seed IDs or different demand levels.
+
+The report gives **mean, P10 and P90** across seeds for ARR/h, DEP/h,
+missed departure opportunities (full two-hour run) and **mean**
+arrival delay (seconds, over all served arrivals). The paired TIME minus
+DISTANCE differences are reported separately for both line-up sequences,
+including a **95% bootstrap interval for the paired mean difference**
+with 2,000 reproducibly seeded seed-resampling replicates. These are
+simulation-replication intervals, NOT confidence bounds on real ELLX
+capacity or a statistical estimate of ANA traffic outcomes.
+
+**Monotonicity diagnostic:** for each seed and planning policy, compare
+SEQUENTIAL and CONDITIONAL served departures in the measurement hour.
+Every seed where the conservative sequence exceeds conditional is
+retained in the candidate report, with its seed, full-run and in-window
+throughputs, first divergent departure status, scheduling threshold
+times and binding reasons. The share across 50 seeds is reported.
+A share above the **advisory 10%** is flagged for independent review,
+not suppressed or silently forced to zero. Queue path-dependence and
+the measurement-window boundary are possible mechanisms, not established
+causes in a real ATC operation.
+
+**N2: two separately labelled departure request profiles.** The original
+every-second-arrival synthetic opportunities represent a potentially
+*insertable* demand, **not observed departure volume or a reproducible
+operational capacity**. The added observed-like profile requests **three
+departures/hour, two HEAVY_JET and one MEDIUM_JET**, or six requests over
+two hours (four heavy, two medium), placed at synthetic 10/30/50-minute
+opportunity points. These request times are **not** extracted from
+ANA movements, and the actual served departures are subject to the
+same unvalidated synthetic queue and runway-event mechanics.
+
+The observed seven-day evening peak (20–21 ARR/h, about three DEP/h,
+two heavy) is an **aggregate consistency reference**, not precise
+demand or runway timing evidence. An observed-peak gate is reported
+for the replicated conditional+distance mean at demand 20/21 ARR/h.
+A gate pass does not certify local procedures or runway capacity.
+The unchanged core-queue saturated-arrival-only diagnostic (~24 ARR/h)
+is also reported separately from Claude's approximate ~22/h expectation.
+
 ## Scope and limitations
 
 One DEP opportunity per selected adjacent ARR pair; no multi-runway
