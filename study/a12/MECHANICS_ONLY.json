@@ -128,7 +128,11 @@
     "quantiles": "TYPE7",
     "confidence": 0.95,
     "monotonicityMaxViolationShareAdvisory": 0.1,
-    "source": "Claude PR #3 review pullrequestreview-5903350016; monotonicity advisory is NOT safety/operational tolerance"
+    "source": "Claude PR #3 review pullrequestreview-5903350016; monotonicity advisory is NOT safety/operational tolerance",
+    "b5WholeRunViolationShareThresholdExclusive": 0.05,
+    "b5ReviewRule": "CONDITIONAL_SERVED_BY_DRAIN_GE_SEQUENTIAL_AND_CONDITIONAL_TOTAL_DEP_DELAY_LE_SEQUENTIAL",
+    "b5WorstTraceCount": 3,
+    "b5SourceReview": "pullrequestreview-5903461437"
   },
   "departureDemandProfiles": {
     "INSERTABLE_EVERY_SECOND_ARR": {
@@ -155,20 +159,25 @@
   "incrementalArrivalDelaySource": "SYNTHETIC_UNVALIDATED: candidate follower threshold minus no-departure follower threshold (not accumulated original-request delay)",
   "departureReleaseRule": "FIFO_WAIT_NEXT_ARR_GAP_AND_INCREMENTAL_DELAY",
   "observedLikeGate": {
-    "sourceReview": "pullrequestreview-5903407826",
+    "sourceReview": "pullrequestreview-5903461437",
     "demandArrivalsPerHour": [
       20,
       21
     ],
-    "arrivalServedBandPerHour": [
+    "arrivalMeanServedBandPerHour": [
       19,
       21
     ],
+    "meanMeasuredDeparturesBandPerHour": [
+      2.5,
+      3.5
+    ],
     "departuresRequestedPerHour": 3,
     "heavyRequestsPerHour": 2,
-    "requireAllObservedLikeDeparturesServed": true,
-    "departureHorizon": "FULL_TWO_HOUR_PLUS_DRAIN_WITH_SEPARATE_MEASUREMENT_HOUR",
+    "allRequestsServedByDrainRequired": true,
+    "measurementWindowAllThreeServedShare": "REPORT_ONLY_NOT_A_GATE",
+    "departureHorizon": "TWO_HOUR_REQUESTS_PLUS_DRAIN; RATES_ONE_HOUR_MEASUREMENT",
     "reportMeanDepartureDelay": true,
-    "status": "PREDECLARED_VALIDITY_GATE_UNVALIDATED_MECHANICS"
+    "status": "PREDECLARED_AGGREGATE_CONSISTENCY_GATE_UNVALIDATED_MECHANICS"
   }
 }
