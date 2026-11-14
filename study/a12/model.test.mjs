@@ -398,3 +398,31 @@ test('B4: censored FIFO requests only at insufficient drain horizon',()=>{
  assert.equal(r.departures[0].reason,'drain-horizon');
  assert.equal(r.departures[0].missedOpportunity,true);
 });
+
+test('B4: FIFO held head is released in a later ARR gap before the drain',()=>{
+ const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
+ c.maxIncrementalArrivalDelayMs=0;
+ const arr=[simpleArr('A0',0),simpleArr('A1',60000),simpleArr('A2',500000),
+  simpleArr('A3',800000)];
+ const d1=simpleDep('D1','A0','A1','HEAVY_JET',0);
+ const d2=simpleDep('D2','A1','A2','MEDIUM_JET',100000);
+ const r=simulate(synthetic(arr,[d1,d2]),c,{sequence:SEQUENTIAL,policy:TIME});
+ assert.ok(r.events.some(x=>x.flightId==='D1'&&x.event==='fifo-hold-next-gap'));
+ assert.equal(r.departures[0].id,'D1');
+ assert.equal(r.departures[0].status,'served');
+ assert.notEqual(r.departures[0].reason,'DRAIN_FIFO_AFTER_FINAL_ARRIVAL');
+ assert.ok(r.departures[0].delayMs>=0);
+ assert.ok(r.departures.every(x=>x.status==='served'));
+ assert.ok(r.departures[0].timeMs<=r.departures[1].timeMs);
+});
+test('B4: no release is vetoed merely by cumulative follower-request delay',()=>{
+ const c=clone(DEFAULT_CONFIG);
+ c.maxIncrementalArrivalDelayMs=90000;
+ const m=makeManifest(configForDemandLevel(c,21),'OBSERVED_LIKE_3_PER_H_2_HEAVY');
+ const r=simulate(m,configForDemandLevel(c,21),{sequence:CONDITIONAL,policy:DISTANCE});
+ assert.ok(r.arrivals.some(a=>a.delayMs>90000));
+ assert.equal(r.departures.filter(x=>x.status==='served').length,6);
+ assert.ok(r.departures.every(x=>x.delayMs!==null&&x.delayMs>=0));
+ assert.ok(r.metrics.departureDelaySeconds.mean>0);
+ assert.equal(r.metrics.pendingAtDrain,0);
+});
