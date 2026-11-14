@@ -20,6 +20,8 @@ jobs:
       - run: node --test study/*.test.mjs
       - run: node --test study/a11/*.test.mjs
       - run: node --test study/a12/*.test.mjs
+      - name: A1.3 dev-only takeoff interval fit search (never change config)
+        run: node study/a13/fit-ready-cli.mjs
       - run: node --test study/a13/*.test.mjs
       - name: Verify old app files are untouched
         run: git diff --exit-code ef8737e1deed33327788d1319da1c232bd7cb027 HEAD -- index.html relay-worker.js README.md .nojekyll
@@ -52,8 +54,6 @@ jobs:
           path: /tmp/a12-first-candidate.json
           retention-days: 14
           if-no-files-found: error
-      - name: A1.3 dev-only takeoff interval fit search (never change config)
-        run: node study/a13/fit-ready-cli.mjs
       - name: A1.3 departure sequencing candidate (synthetic)
         run: node study/a13/cli.mjs --out /tmp/a13-first-candidate.json
       - name: Export A1.3 candidate (non-operational)
