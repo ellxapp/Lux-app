@@ -87,11 +87,37 @@
       "holdout": "OBSERVED_AGGREGATE_HOLDOUT_REPORT_ONLY"
     }
   },
-  "syntheticDemandNote": "Three independent two-hour demand levels of 18, 20, 22 ARR/hour, with paired DISTANCE/TIME and two lineup sequences on one immutable manifest PER demand level. A1.1 locked delivered-spacing targets are preassigned per ARR pair. Not claimed to match real arrival demand or type mix.",
+  "syntheticDemandNote": "Four independent two-hour synthetic demand levels 18/20/21/22 ARR/hour; frozen A1.1 core and mixture targets on identical per-level paired manifests. Observed peak gate 20-21 ARR/h and at least 2 departures/h. All results conditional on unvalidated ground-event durations.",
   "arrivalDemandLevelsPerHour": [
     18,
     20,
+    21,
     22
   ],
-  "arrivalDemandHours": 2
+  "arrivalDemandHours": 2,
+  "observedValidityGate": {
+    "source": "Claude PR #3 review pullrequestreview-5903308924 (ANA September 2026 evening peak aggregate, 7 days)",
+    "status": "OBSERVED_AGGREGATE",
+    "demandLevelsPerHour": [
+      20,
+      21
+    ],
+    "sequence": "LINEUP_BEHIND_LANDING",
+    "policy": "DISTANCE",
+    "minMeasuredArrivalsPerHour": 19,
+    "maxMeasuredArrivalsPerHour": 21,
+    "minMeasuredDeparturesPerHour": 2,
+    "observedApproxDeparturesPerHour": 3,
+    "observedHeavyDeparturesPerHour": 2,
+    "observedPeakDays": 7,
+    "notes": "20-21 IFR ARR/h on 7 days with about 3 departures/h including 2 heavy; coarse descriptive consistency gate only, not a fitted target or capacity certification"
+  },
+  "saturatedArrivalOnly": {
+    "status": "SYNTHETIC_CORE_ONLY_UNVALIDATED",
+    "demandPerHour": 36,
+    "durationHours": 4,
+    "warmupHours": 1,
+    "referenceApproxRatePerHour": 22,
+    "source": "Claude review 5903308924; diagnostic only, not fitted to exact 22"
+  }
 }
