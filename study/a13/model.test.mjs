@@ -124,6 +124,8 @@ test('S8 S9 50-seed paired scenarios span two backgrounds, four dep rates and tw
   assert.ok(x.pairedCandidateMinusFIFO.departuresInHour.pairedMeanCI95.lower<=
    x.pairedCandidateMinusFIFO.departuresInHour.pairedMeanCI95.upper);
   assert.ok(x.gateSummaries.fifo.noDifferentExitSpacingClaim);
+  assert.equal(x.gateSummaries.fifo.within180SecondsComparablePopulation.observedReferenceNPairs,52);
+  assert.ok(x.gateSummaries.fifo.within180SecondsComparablePopulation.pairs<=x.gateSummaries.fifo.sameExitPairs);
  }
  assert.equal(r.lockSha256,A11_LOCK_SHA256);
 });
