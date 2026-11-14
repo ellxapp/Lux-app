@@ -3,7 +3,7 @@
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {fitDevelopment} from './model.mjs';
+import {fitDevelopment,FIT_POLICY,A11_PARAMETER_NAMES,APPROVED_TYPE_WEIGHTS} from './model.mjs';
 import {canonical,digest} from '../core.mjs';
 
 const args=process.argv.slice(2);
@@ -18,8 +18,12 @@ if(!source.endsWith('sep2026-dev-busy12.json'))throw Error('Fitting accepts only
 const benchmark=JSON.parse(readFileSync(source,'utf8'));
 const out=resolve(val('--candidate-out','/tmp/a11-calibration-lock.candidate.json'));
 if(out.endsWith('/calibration-lock.json')||out.includes('/study/'))throw Error('Candidate must not write into repo or use calibration-lock.json');
-const days=Number(val('--days','110')),perDay=Number(val('--per-day','60')),maxRounds=Number(val('--rounds','12'));
-const fitted=fitDevelopment(benchmark,{seed:20261114,days,perDay,maxRounds});
+// A lock candidate is always produced with the ONE frozen published fitting policy.
+// Small or shortened runs are possible only via direct unit-test APIs, not lock CLI.
+if(args.includes('--days')||args.includes('--per-day')||args.includes('--rounds')||args.includes('--seed'))
+ throw Error('A1.1 lock candidate must use the single published FIT_POLICY; no sampling/round overrides');
+const fitted=fitDevelopment(benchmark,FIT_POLICY);
+const {days,perDay,maxRounds}=FIT_POLICY;
 const minCoverage={overall_5NM:5000,'J-J':1000,'J-TP':1000,'TP-J':1000};
 const coverage=Object.fromEntries(Object.entries(fitted.output.observations).map(([id,x])=>[id,x.nPairs]));
 const meetsSample=Object.entries(minCoverage).every(([id,n])=>(coverage[id]||0)>=n);
@@ -34,13 +38,19 @@ const candidate={
  fittingObjective:'minimax_absolute_normalised_error',
  typeMap:benchmark.typeMap,hardMetricCount:12,hardTolerances:benchmark.hardTolerances,
  bootstrap:benchmark.bootstrap,days:benchmark.days,
- samplePolicy:fitted.provenance.samplePolicy,seed:20261114,
+ samplePolicy:fitted.provenance.samplePolicy,seed:FIT_POLICY.seed,
+ parameterNames:A11_PARAMETER_NAMES,typeMixWeights:APPROVED_TYPE_WEIGHTS,
+ parameterFamily:'SHARED_TWO_COMPONENT_SHIFTED_LOGNORMAL',freeParameterCount:8,
+ stopping:fitted.stopping,converged:fitted.stopping.converged,
+ fitPolicySha256:digest(FIT_POLICY),
  parameters:fitted.parameters,modelVersion:fitted.provenance.modelVersion,
  targetMeaning:fitted.provenance.targetMeaning,
  metricComparisons:fitted.score.hardMetrics.map(x=>({stratum:x.id,metric:x.metric,target:x.target,
   fitted:Number.isFinite(x.actual)?x.actual:null,tolerance:x.tolerance,normalisedError:Number.isFinite(x.normalised)?x.normalised:null})),
  fitScore:Number.isFinite(fitted.score.maxNormalisedError)?fitted.score.maxNormalisedError:null,
  floorRaising:fitted.output.totals,
+ syntheticHourlyCountStatus:fitted.output.meta.hourlyCountStatus,
+ rotProxyStatus:'SYNTHETIC_UNVALIDATED_MINIMUM_THRESHOLD_INTERVAL',
  syntheticCoverage:Object.fromEntries(Object.entries(fitted.output.observations).map(([id,s])=>[id,{nPairs:s.nPairs,nPairsWithDistance:s.nPairsWithDistance}])),
  representable:!fitted.score.fitNotRepresentable,
  warnings:['Non-operational simplified A1.1 synthetic model','No holdout observations have been read','CAPTURE_EMPIRICAL_SEP2026_DEV is aggregate censoring, not a final-track geometry model',
@@ -51,4 +61,5 @@ mkdirSync(dirname(out),{recursive:true});
 writeFileSync(out,serial,'utf8');
 console.log(canonical({candidatePath:out,candidateSha256:digest(serial),
  status:candidate.status,fitScore:candidate.fitScore,representable:candidate.representable,
+ stopping:candidate.stopping,converged:candidate.converged,
  hardMetricCount:12,syntheticCoverage:coverage,sourceCommit:current,outputNotCommitted:true}));
