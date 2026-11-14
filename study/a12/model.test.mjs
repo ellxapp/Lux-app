@@ -328,7 +328,9 @@ test('B3: at least 50 deterministic seeds across every demand level and both dem
    assert.equal(m.violations.length,m.violatingSeeds);
    assert.equal(m.shareSequentialHigher,m.violatingSeeds/50);
    assert.ok(m.violations.every(v=>v.seed>=cfg.replication.seedStart&&
-     v.excessDeparturesInWindow>0&&v.needsIndependentTechnicalReview===true));
+     v.excessDeparturesInWindow>0&&v.needsIndependentTechnicalReview===true&&
+     v.firstMeasurementWindowDifference!==null&&
+     v.evidenceClassification!=='UNRESOLVED_MONOTONICITY_VIOLATION'));
   }
  }
  assert.equal(result.a11LockSha256,APPROVED_A11_LOCK_SHA256);
