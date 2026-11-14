@@ -20,6 +20,10 @@ const out=resolve(val('--candidate-out','/tmp/a11-calibration-lock.candidate.jso
 if(out.endsWith('/calibration-lock.json')||out.includes('/study/'))throw Error('Candidate must not write into repo or use calibration-lock.json');
 const days=Number(val('--days','110')),perDay=Number(val('--per-day','60')),maxRounds=Number(val('--rounds','12'));
 const fitted=fitDevelopment(benchmark,{seed:20261114,days,perDay,maxRounds});
+const minCoverage={overall_5NM:5000,'J-J':1000,'J-TP':1000,'TP-J':1000};
+const coverage=Object.fromEntries(Object.entries(fitted.output.observations).map(([id,x])=>[id,x.nPairs]));
+const meetsSample=Object.entries(minCoverage).every(([id,n])=>(coverage[id]||0)>=n);
+if(!meetsSample)throw Error('Insufficient synthetic busy-pair coverage: '+JSON.stringify({coverage,minimum:minCoverage}));
 const candidate={
  schema:1,status:'CANDIDATE_NOT_APPROVED',sourceStatus:'OBSERVED_AGGREGATE_DEV',
  sourceComment:'https://github.com/ellxapp/panel/issues/6#issuecomment-6868493243',
@@ -47,4 +51,4 @@ mkdirSync(dirname(out),{recursive:true});
 writeFileSync(out,serial,'utf8');
 console.log(canonical({candidatePath:out,candidateSha256:digest(serial),
  status:candidate.status,fitScore:candidate.fitScore,representable:candidate.representable,
- hardMetricCount:12,sourceCommit:current,outputNotCommitted:true}));
+ hardMetricCount:12,syntheticCoverage:coverage,sourceCommit:current,outputNotCommitted:true}));
