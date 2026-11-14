@@ -155,7 +155,7 @@ export function materialize(manifest,params){
 }
 export function runAssignedManifest(manifest){
  if(!manifest.synthetic||manifest.schema!==11||manifest.assignedBy!=='A1.1_DISTRIBUTION_GENERATOR')throw Error('assigned synthetic A1.1 manifest required');
- let floorRaised=0,numberTargets=0,maxRaiseM=0;
+ let floorRaised=0,numberTargets=0,maxRaiseM=0,rotFloorBindings=0;
  const days=[];
  for(const fl of manifest.flights){
   let clockMs=0;const arrivals=[];
@@ -166,7 +166,10 @@ export function runAssignedManifest(manifest){
    const minNM=lead?Math.max(SEP2026_FITTED.surveillanceNM,wakeFloorNM(lead.wake,base.wake)):0;
    const effectiveNM=lead?Math.max(requestedNM,minNM):null;
    const followerProfile=profileFor(base.type,base.headwindKt);
-   let intervalMs=lead?Math.max(80000,timeToGoMs(effectiveNM*NM,followerProfile)):0;
+   const unconstrainedIntervalMs=lead?timeToGoMs(effectiveNM*NM,followerProfile):0;
+   const rotProxy=SEP2026_FITTED.arrivalRotProxyMs;
+   if(lead&&unconstrainedIntervalMs<rotProxy)rotFloorBindings++;
+   let intervalMs=lead?Math.max(rotProxy,unconstrainedIntervalMs):0;
    let minimumAlongPathNM=null;
    if(lead){
     const leaderProfile=profileFor(lead.type,lead.headwindKt);
@@ -194,7 +197,7 @@ export function runAssignedManifest(manifest){
   }
   days.push({dayId:fl[0].dayId,arrivals,departures:[],weatherGood:true});
  }
- return {days,floorRaised,numberTargets,maxRaiseM,raiseFraction:numberTargets?floorRaised/numberTargets:0,
+ return {days,floorRaised,numberTargets,maxRaiseM,rotFloorBindings,raiseFraction:numberTargets?floorRaised/numberTargets:0,
    manifestSha256:digest(manifest),materializedDigest:digest(days)};
 }
 export function evaluateSynthetic(manifest,params){
@@ -203,10 +206,12 @@ export function evaluateSynthetic(manifest,params){
  const ids=['overall_5NM','J-J','J-TP','TP-J','TP-TP_report','8NM_report','10NM_report'];
  const observations=Object.fromEntries(ids.map(id=>[id,stats(stratumPairs(pairs,id))]));
  return {observations,totals:{qualifiedPairs:pairs.length,raisedTargets:m.floorRaised,
-  targets:m.numberTargets,raiseFraction:m.raiseFraction,maxRaiseM:m.maxRaiseM},
+  targets:m.numberTargets,raiseFraction:m.raiseFraction,maxRaiseM:m.maxRaiseM,rotFloorBindings:m.rotFloorBindings},
   meta:{modelVersion:A11_MODEL_VERSION,targetMeaning:TARGET_MEANING,capture:'CAPTURE_EMPIRICAL_SEP2026_DEV',
    captureDigest:CAPTURE_DIGEST,manifestSha256:m.manifestSha256,materializedDigest:m.materializedDigest,
-   syntheticDays:manifest.days,syntheticFlights:manifest.days*manifest.perDay,preset:SEP2026_FITTED.preset,source:'FITTED_SYNTHETIC'}};
+   syntheticDays:manifest.days,syntheticFlights:manifest.days*manifest.perDay,preset:SEP2026_FITTED.preset,source:'FITTED_SYNTHETIC',
+   hourlyCountStatus:'SYNTHETIC_SATURATED_DEMAND_NOT_COMPARABLE_TO_OBSERVED_BUSY_COUNTS',
+   rotProxyMs:SEP2026_FITTED.arrivalRotProxyMs,typeWeightsSha256:digest(APPROVED_TYPE_WEIGHTS)}};
 }
 export function scoreModel(output,benchmark){
  const measures=hardMetrics(benchmark),errors=measures.map(m=>{
