@@ -33,6 +33,36 @@ export function timeToGoMs(distanceM,profile){
  }
  return Math.round(t);
 }
+// Reconstruct the synthetic equivalent centreline trajectory from an immutable IAS profile.
+export function distanceBeforeThresholdNM(msBefore,profile){
+ if(msBefore<=0)return 0;
+ let remaining=msBefore/1000;
+ for(let i=profile.segments.length-1;i>=0;i--){
+  const s=profile.segments[i],speed=(s.iasKt-profile.headwindKt)*1852/3600;
+  const span=(s.fromNM-s.toNM)*1852;
+  const seconds=span/speed;
+  if(remaining<=seconds)return s.toNM+(remaining*speed)/1852;
+  remaining-=seconds;
+ }
+ const top=profile.segments[0];
+ return top.fromNM+(remaining*(top.iasKt-profile.headwindKt)*1852/3600)/1852;
+}
+// Piecewise-linear speed means minima occur at a segment boundary or overlap endpoint.
+// This is a modelled common-final proxy, not a real vectoring track.
+export function minimumCommonFinalNM(leaderProfile,followerProfile,intervalMs){
+ const start=Math.max(-timeToGoMs(20*NM,leaderProfile),intervalMs-timeToGoMs(20*NM,followerProfile));
+ if(start>0)return Infinity;
+ const times=[start,0];
+ for(const d of [20,6,4]){
+  const leaderPoint=-timeToGoMs(d*NM,leaderProfile);
+  const followerPoint=intervalMs-timeToGoMs(d*NM,followerProfile);
+  if(leaderPoint>=start&&leaderPoint<=0)times.push(leaderPoint);
+  if(followerPoint>=start&&followerPoint<=0)times.push(followerPoint);
+ }
+ return Math.min(...times.map(t=>distanceBeforeThresholdNM(intervalMs-t,followerProfile)-
+     distanceBeforeThresholdNM(-t,leaderProfile)));
+}
+
 function xorshift(seed){let x=(seed>>>0)||0x9e3779b9;return ()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};}
 function normal(next){return Math.sqrt(-2*Math.log(Math.max(1e-12,next())))*Math.cos(2*Math.PI*next());}
 export function makeScenarioManifest({seed=20261114,days=140,perDay=56}={}){
@@ -83,15 +113,34 @@ export function materialize(manifest,params){
    const key=lead?pairKey(lead,base):null;
    const mu=key==='J-J'?params.mu[0]:key==='J-TP'?params.mu[1]:key==='TP-J'?params.mu[2]:muTP;
    const requestedNM=lead?params.shift+Math.exp(mu+params.sigma*base.targetNormal):null;
-   const minNM=lead?wakeFloorNM(lead.wake,base.wake):0;
+   const minNM=lead?Math.max(3,wakeFloorNM(lead.wake,base.wake)):0;
    const effectiveNM=lead?Math.max(requestedNM,minNM):null;
-   if(lead&&requestedNM<minNM){floorRaised++;maxRaiseM=Math.max(maxRaiseM,Math.round((minNM-requestedNM)*NM));}
-   if(lead)numberTargets++;
-   const intervalMs=lead?Math.max(80000,timeToGoMs(effectiveNM*NM,profileFor(base.type,base.headwindKt))):0;
+   const followerProfile=profileFor(base.type,base.headwindKt);
+   let intervalMs=lead?Math.max(80000,timeToGoMs(effectiveNM*NM,followerProfile)):0;
+   let minimumAlongPathNM=null;
+   if(lead){
+    const leaderProfile=profileFor(lead.type,lead.headwindKt);
+    // Hold upstream while the final-path hard minimum would be infringed.
+    // An upper bound of 15 additional minutes prevents infinite loops.
+    let addedMs=0;
+    while((minimumAlongPathNM=minimumCommonFinalNM(leaderProfile,followerProfile,intervalMs))<minNM-1e-8){
+     intervalMs+=1000;addedMs+=1000;
+     if(addedMs>900000)throw Error('hard separation cannot be represented');
+    }
+    if(effectiveNM<minNM||addedMs>0){
+     floorRaised++;
+     const achieved=distanceBeforeThresholdNM(intervalMs,followerProfile);
+     maxRaiseM=Math.max(maxRaiseM,Math.round(Math.max(0,achieved-requestedNM)*NM));
+    }
+    numberTargets++;
+   }
    clockMs+=intervalMs;
-   arrivals.push({...base,requestMs:clockMs,effectiveTargetM:effectiveNM===null?null:Math.round(effectiveNM*NM),
-     targetRaisedToMinimum:lead?requestedNM<minNM:false,equivalentDistanceNM:effectiveNM,
-     effectiveTargetSource:TARGET_MEANING,timeMs:clockMs});
+   const deliveredNM=lead?distanceBeforeThresholdNM(intervalMs,followerProfile):null;
+   arrivals.push({...base,requestMs:clockMs,
+     effectiveTargetM:effectiveNM===null?null:Math.round(effectiveNM*NM),
+     targetRaisedToMinimum:lead?(effectiveNM>requestedNM||deliveredNM>requestedNM+1e-8):false,
+     minimumCommonFinalNM:minimumAlongPathNM,
+     equivalentDistanceNM:deliveredNM,effectiveTargetSource:TARGET_MEANING,timeMs:clockMs});
   }
   days.push({dayId:fl[0].dayId,arrivals,departures:[],weatherGood:true});
  }
