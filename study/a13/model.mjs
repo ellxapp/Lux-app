@@ -353,7 +353,9 @@ export function replicate(c=CONFIG){
     const gates={};
     for(const policy of ['fifo','candidate']){
      const samePairs=rows.flatMap(r=>r[policy].pairs.filter(p=>p.sameExit));
+     const within180=samePairs.filter(p=>p.airborneGapSeconds<=180);
      const evaluable=samePairs.filter(p=>p.gateTimes.RADIAL_40_NM.gapSeconds!==null);
+     const evaluableWithin180=within180.filter(p=>p.gateTimes.RADIAL_40_NM.gapSeconds!==null);
      const byOrder={};
      for(const type of ['TP-J','J-TP','J-J'])
       byOrder[type]=stats(evaluable.filter(p=>p.categoryPair===type)
@@ -361,6 +363,12 @@ export function replicate(c=CONFIG){
      gates[policy]={sameExitPairs:samePairs.length,evaluableSameExitPairs:evaluable.length,
       coverage:evaluable.length/Math.max(1,samePairs.length),
       sameExitAirborneGapS:stats(samePairs.map(p=>p.airborneGapSeconds)),
+      within180SecondsComparablePopulation:{
+       pairs:within180.length,withGate40:evaluableWithin180.length,
+       observedReferenceNPairs:52,observedReferenceAirborneGapApproxSeconds:120,
+       airborneGapS:stats(within180.map(p=>p.airborneGapSeconds)),
+       gate40TimeGapS:stats(evaluableWithin180.map(p=>p.gateTimes.RADIAL_40_NM.gapSeconds)),
+       status:'SYNTHETIC_CONDITIONED_SAME_EXIT_WITHIN_180_SECONDS_NOT_VALIDATED'},
       gate30GapS:stats(samePairs.map(p=>p.gateTimes.RADIAL_30_NM.gapSeconds)),
       gate40GapS:stats(evaluable.map(p=>p.gateTimes.RADIAL_40_NM.gapSeconds)),
       change40ByOrderS:byOrder,
