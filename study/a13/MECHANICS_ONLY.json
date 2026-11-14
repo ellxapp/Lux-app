@@ -214,18 +214,39 @@
     "status": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS",
     "calibration": "DETERMINISTIC_GRID_SEARCH_ON_PUBLISHED_AGGREGATES_NO_RAW_MOVEMENT_RECORDS",
     "early": {
-      "singleFraction": 0.1,
-      "tripleFraction": 0.15,
-      "withinClusterGapMs": 20000,
-      "centerJitterFraction": 0.1
+      "singleFraction": 0,
+      "tripleFraction": 0.24,
+      "withinClusterGapMs": 30000,
+      "centerJitterFraction": 0
     },
     "late": {
       "singleFraction": 0.24,
-      "tripleFraction": 0.08,
-      "withinClusterGapMs": 25000,
+      "tripleFraction": 0.12,
+      "withinClusterGapMs": 60000,
       "centerJitterFraction": 0.1
     },
     "restrictions": "Synthetic requests, not observed taxi-ready/clearance/CTOT timestamps",
-    "queueReadyDefinition": "Request time means synthetic runway-ready time; departures wait if runway occupied."
+    "queueReadyDefinition": "Request time means synthetic runway-ready time; departures wait if runway occupied.",
+    "fitAudit": {
+      "sourceReview": "pullrequestreview-5905137012",
+      "sourceStatus": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS",
+      "calibrationDevelopmentSeeds": 12,
+      "gridCombinationsPerWave": 120,
+      "objective": "|median residual|/30 + |share <=120 residual pp|/10 + 0.1*|P90 residual|/180",
+      "earlyFit": {
+        "medianS": 115,
+        "shareLE120": 0.5101522842639594,
+        "p90S": 384.285,
+        "loss": 0.18168117597292746
+      },
+      "lateFit": {
+        "medianS": 184.075,
+        "shareLE120": 0.3783422459893048,
+        "p90S": 360.04690000000016,
+        "loss": 0.1857181512180624
+      },
+      "verification": "RUN_ALL_50_SEEDS_SEPARATELY; NO_SEALED_DEPARTURE_HOLDOUT",
+      "warning": "This fits take-off interval aggregates using synthetic runway scheduling, not unobserved runway ready-times or independent external validation."
+    }
   }
 }
