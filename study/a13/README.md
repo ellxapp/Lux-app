@@ -47,8 +47,8 @@ approved 14/16/18/20 departures/hour cases, and their proper
 from observed median and share ≤120s, with P90 as a low-weight
 descriptive term. The two selected parameter families are stored in
 `MECHANICS_ONLY.json`, labelled
-`FITTED_TO_SEP2026_TAKEOFF_INTERVALS`.
-The full **50-seed** separate replication rechecks each wave's
+`FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT`.
+The full **50-seed** replication (including the 12 development seeds) rechecks each wave's
 **FIFO CURRENT** take-off events within the one-hour measurement
 window. The preregistered gate requires:
 **|model median − observed median| ≤30s** AND
@@ -62,6 +62,50 @@ The candidate reports the number of viable one-position swaps,
 the percentage of seeds with at least one accepted swap, and paired
 FIFO-versus-candidate changes to departures, total delay and
 40NM gate-time differences, including zero or adverse outcomes.
+
+## C2: minute-quantised take-off observations (Claude review 5907827059)
+
+ANA's `act_date_d` observations have **whole-minute timestamps**. A departure
+at 00:59.999 and the next at 01:00.001 is recorded as a **60 s interval**
+although the physical interval is approximately 0 s. Two departures within
+one recorded minute yield a **0 s interval**. To compare the **observed
+take-off interval distribution**, the model now applies
+`floor(airborneMs / 60000) * 60000` to **each absolute take-off time
+before differencing consecutive departures**. The original continuous
+airborne times remain intact for runway mechanics, gate-time calculations,
+departure delay, resequencing and capacity proxies. The observation
+operator is used **only for the take-off interval fit and its gate**.
+
+After implementing this operator, a fresh 120-combination-per-wave,
+12-development-seed grid search selected early bunch parameters
+(single 0.12, triple 0.12, within-cluster 60s, centre jitter 0.10) and
+late bunch parameters (single 0.24, triple 0, within-cluster 90s,
+centre jitter 0). The 50-seed replication repeats the specified gate
+(median within ±30 s, share ≤120 s within ±10 percentage points).
+P10 and P90, both modelled and observed, and same-exit shares must be
+shown in every compact review table.
+
+The required label is **`FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT`**.
+This is a development fit using the published whole-minute take-off
+interval aggregates, with the 12 fit seeds included in the 50-seed
+verification. It is **not** independent observed-ready-time validation
+and has no separate sealed departure holdout.
+
+### Preliminary resequencing finding
+
+Under the fitted bunched morning-wave demand, restricting a candidate
+to a **single adjacent TP→jet same-exit swap** with at most **120 s
+additional individual delay** yields **rare accepted swaps**.
+In the first corrected C1 candidate, the 1 ARR/h, 20 DEP/h,
+CURRENT case accepted 12 swaps across 50 seed-level runs, but the
+candidate produced **no extra departures per measured hour** and only
+small changes to 40NM gate-time gaps. The C2 minute-quantised refit
+must be assessed afresh; it must not be claimed to establish a new
+capacity gain. The study's **preliminary, moderate-confidence finding**
+is that **limited one-position resequencing has little effect at the
+modelled ELLX demand levels**. Potential benefits of longer-horizon
+planned sequencing (DMAN/TSAT) lie **outside A1.3**. CTOT/ATFM
+constraints and physical exit-fix geometry are not modelled.
 
 ## N1: jet-speed-anchor sensitivity
 
