@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureProbability,captureDistance,isBusyArrival,classifyRegime,typeFamily,quantileType7,
-  observeDay,stats,hardMetrics,CAPTURE_DIGEST,stratumPairs} from './observation.mjs';
+  observeDay,stats,hardMetrics,CAPTURE_DIGEST,stratumPairs,selectHourlyMetar,syntheticWeatherClass} from './observation.mjs';
 import {profileFor,timeToGoMs,makeScenarioManifest,wakeFloorNM,materialize,assignEffectiveTargets,runAssignedManifest,minimumCommonFinalNM,evaluateSynthetic,
   scoreModel,fitDevelopment} from './model.mjs';
 import {validateHoldout} from './validate.mjs';
@@ -158,4 +158,21 @@ test('2018 reference distinguishes observed/optimal technical capacities and uni
  assert.equal(ada.optimalTechnical,34.64);
  assert.equal(ada.comparison,'NOT_COMPARABLE');
  assert.equal(EUROCONTROL_2018_REFERENCE.metrics.DD['06'].optimal,29.6);
+});
+
+test('hourly METAR matching, non-LVP and 15kt boundaries are deterministic filters only',()=>{
+ const hour=8*3600000,follow=hour+40*60000;
+ const r1={timeMs:hour-91*60000,visibilityM:9999};
+ const r2={timeMs:hour-90*60000,visibilityM:9999};
+ const r3={timeMs:hour-30*60000,visibilityM:9999,windDirectionDeg:240,windKt:15};
+ const r4={timeMs:hour+1000,visibilityM:300};
+ assert.equal(selectHourlyMetar(follow,[r1,r2,r3,r4]),r3);
+ assert.equal(selectHourlyMetar(follow,[r1,r4]),null);
+ assert.equal(selectHourlyMetar(follow,[r2]),r2);
+ assert.equal(syntheticWeatherClass(r3,240).classification,'HW15_REPORT');
+ assert.equal(syntheticWeatherClass({...r3,windKt:14.9},240).classification,'GOOD_WEATHER');
+ assert.equal(syntheticWeatherClass({...r3,ceilingType:'BKN',ceilingFt:200},240).classification,'LVP_PROXY');
+ assert.equal(syntheticWeatherClass({...r3,rvrAM:800},240).classification,'LVP_PROXY');
+ assert.equal(syntheticWeatherClass({...r3,windDirectionDeg:null,windKt:null},240).classification,'GOOD_WEATHER');
+ assert.equal(syntheticWeatherClass(null,240).fitEligible,false);
 });
