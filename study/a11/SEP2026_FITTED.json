@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "preset": "SEP2026_FITTED",
+  "status": "FITTED_SYNTHETIC_NON_OPERATIONAL",
+  "source": "Philip-approved 2026 minima and development aggregates in ellxapp/panel issue #6 comments 6868190637 6868452613 6868493243",
+  "sourceNotOperationalApproval": true,
+  "weatherScope": "September 2026 good weather; headwind below 15 kt; no LVP validation",
+  "thresholdPlanningNM": {
+    "withoutInterveningDeparture": 5,
+    "mediumDeparture": 8,
+    "heavyDeparture": 10
+  },
+  "surveillanceNM": 3,
+  "wakeScheme": "ICAO_PANS_ATM_DISTANCE_NOT_RECAT_EU",
+  "wakeNM": {
+    "H": {
+      "H": 4,
+      "M": 5,
+      "L": 6
+    },
+    "M": {
+      "L": 5
+    }
+  },
+  "missingWakePairUsesSurveillanceFloor": true,
+  "rejectSuper": true,
+  "effectiveTarget": "TARGET_AS_EQUIVALENT_TRACK_DISTANCE",
+  "capture": "CAPTURE_EMPIRICAL_SEP2026_DEV",
+  "captureBasedOn": "approved empirical interval-bin counts, including non-final vectoring; not geometrical final intercept",
+  "typeMix": {
+    "turbopropProbability": 0.29,
+    "independentTypes": true
+  },
+  "typeFamily": {
+    "TP": [
+      "DH8D",
+      "PC12",
+      "AT72",
+      "AT75",
+      "AT76"
+    ],
+    "J": "other included fixed-wing"
+  },
+  "speedProfile": {
+    "outerIASKt": 180,
+    "outerToNM": 6,
+    "intermediateIASKt": 160,
+    "intermediateToNM": 4,
+    "finalSegmentLabel": "ESTIMATED_FROM_ADSB_GS_METAR_WIND 4-2NM median, NOT stabilised final IAS"
+  },
+  "hardFloorRaiseLimitFraction": 0.05
+}
