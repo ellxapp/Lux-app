@@ -41,8 +41,8 @@
   "drainEndMs": 7200000,
   "stepMs": 1000,
   "seed": 20261114,
-  "arrivalCount": 60,
-  "arrivalRequestStepMs": 120000,
+  "arrivalCount": 40,
+  "arrivalRequestStepMs": 180000,
   "arrivalRequestJitterMs": 7000,
   "departureEvery": 2,
   "departureDemandDelayMs": 0,
@@ -87,5 +87,11 @@
       "holdout": "OBSERVED_AGGREGATE_HOLDOUT_REPORT_ONLY"
     }
   },
-  "syntheticDemandNote": "Illustrative 120-second ARR request spacing with a DEP opportunity every two ARR slots; chosen to exercise paired release outcomes, NOT fitted to observed movement counts."
+  "syntheticDemandNote": "Three independent two-hour demand levels of 18, 20, 22 ARR/hour, with paired DISTANCE/TIME and two lineup sequences on one immutable manifest PER demand level. A1.1 locked delivered-spacing targets are preassigned per ARR pair. Not claimed to match real arrival demand or type mix.",
+  "arrivalDemandLevelsPerHour": [
+    18,
+    20,
+    22
+  ],
+  "arrivalDemandHours": 2
 }
