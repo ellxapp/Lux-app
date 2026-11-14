@@ -50,6 +50,9 @@ class mu for J-J, J-TP, TP-J. TP-TP mu is fixed from a report-only pooled
 median. Type draws are independent with approximately 29% turboprop;
 sequence correlation is not inferred. The manifest stores per-flight
 normal and capture quantiles; runs are deterministic and draw no randomness.
+Named preset study/a11/SEP2026_FITTED.json explicitly fixes the historical
+3NM surveillance floor, ICAO PANS-ATM wake matrix, observation/capture labels
+and 5% target-raise threshold. This is not a CURRENT_2026 operational preset.
 Hard surveillance 3NM and ICAO PANS-ATM category wake minima are never
 lowered. Target-raising to a hard minimum is counted; >5% produces
 FIT_NOT_REPRESENTABLE. A negative APP–TWR SLA planning gap is a
@@ -61,6 +64,7 @@ diagnostic and not itself a go-around.
     node --test study/*.test.mjs
     node --test study/a11/*.test.mjs
     node study/a11/fit-cli.mjs --candidate-out /tmp/a11-lock.candidate.json --days 110 --per-day 60 --rounds 8
+    node study/a11/2018-cli.mjs /tmp/a11-2018-discrepancy.json
 
 The command reads ONLY the published approved development aggregate file.
 It refuses a dirty tree unless --allow-dirty is recorded. It writes an
