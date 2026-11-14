@@ -114,6 +114,6 @@ test('holdout evaluation refuses non-approved lock and no missing-day substituti
  const lock={status:'CANDIDATE_NOT_APPROVED',hardMetricCount:12};
  assert.throws(()=>validateHoldout({lock,development:benchmark,holdout:{},lockCommitSha:SHA}),/approved/);
  const holdout={status:'OBSERVED_AGGREGATE_HOLDOUT',days:benchmark.days.holdout.slice(1),strata:[]};
- const approved={...lock,status:'APPROVED_LOCK',benchmarkSha256:digest(benchmark)};
+ const approved={...lock,status:'APPROVED_LOCK',sourceStatus:'OBSERVED_AGGREGATE_DEV',benchmarkSha256:digest(benchmark)};
  assert.throws(()=>validateHoldout({lock:approved,development:benchmark,holdout,lockCommitSha:SHA}),/holdout days/);
 });
