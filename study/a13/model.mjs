@@ -176,6 +176,69 @@ export function gateCrossings(dep,airborneMs,c=CONFIG,fit=fittedSpeedContrast(c)
  }
  return {crossings,profile:p};
 }
+export function intervalSample(run,c=CONFIG){
+ const start=c.demand.measurementStartMs,end=c.demand.measurementEndMs;
+ const within=run.departures.filter(d=>d.status==='served'&&d.airborneMs>=start&&d.airborneMs<end)
+  .sort((a,b)=>a.airborneMs-b.airborneMs||a.id.localeCompare(b.id));
+ const intervals=[],sameExit=[];
+ for(let i=1;i<within.length;i++){
+  intervals.push((within[i].airborneMs-within[i-1].airborneMs)/1000);
+  sameExit.push(within[i].exit===within[i-1].exit?1:0);
+ }
+ return {intervals,sameExit,departureCount:within.length};
+}
+export function evaluateTakeoffIntervalGate(c=CONFIG,{seeds=c.replication.seeds,
+ rates=c.demand.departureLevelsPerHour}={}){
+ validateConfig(c);
+ const result={};
+ for(const bg of c.demand.backgroundArrivalsPerHour){
+  const wave=bg===1?'early':'late',all=[],same=[],byRate={};
+  for(const rate of rates){
+   const xs=[],ss=[];
+   for(let i=0;i<seeds;i++){
+    const seed=c.replication.seedStart+i*c.replication.seedStride;
+    const m=makeManifest(c,{seed,departuresPerHour:rate,backgroundArrivalsPerHour:bg});
+    const sample=intervalSample(simulate(m,c,{policy:'FIFO',preset:'CURRENT'}),c);
+    xs.push(...sample.intervals);ss.push(...sample.sameExit);
+   }
+   byRate[rate]={intervalCount:xs.length,medianS:quant(xs,.5),
+    shareLE120:xs.length?xs.filter(x=>x<=120).length/xs.length:null};
+   all.push(...xs);same.push(...ss);
+  }
+  const obs=c.observed.takeoffIntervals[wave],measured=stats(all);
+  const shareLE=seconds=>all.length?all.filter(x=>x<=seconds).length/all.length:null;
+  const share120=shareLE(120),sameExitShare=same.length?
+   same.reduce((a,b)=>a+b,0)/same.length:null;
+  const medianResidual=measured.median-obs.medianS,
+   share120ResidualPP=100*(share120-obs.shareLE120);
+  result[wave]={
+   source:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS',
+   inputs:{backgroundArrivalsPerHour:bg,seedCount:seeds,rates,readyParameters:c.readyTimeProcess[wave],
+    comparator:'FIFO_CURRENT_SYNTHETIC_TAKEOFF_EVENTS_IN_1H_MEASUREMENT_WINDOW',
+    observedWholeMinuteResolutionSeconds:obs.intervalResolutionSeconds??60},
+   observed:{nIntervals:obs.intervals,p10S:obs.p10S,medianS:obs.medianS,p90S:obs.p90S,
+    shareLE60:obs.shareLE60,shareLE120:obs.shareLE120,shareLE180:obs.shareLE180,
+    consecutiveSameExitShare:obs.consecutiveSameExitShare},
+   model:{intervals:measured.n,p10S:measured.p10,medianS:measured.median,p90S:measured.p90,
+    shareLE60:shareLE(60),shareLE120:share120,shareLE180:shareLE(180),
+    consecutiveSameExitShare:sameExitShare,byRate},
+   residual:{medianSeconds:medianResidual,shareLE120PercentagePoints:share120ResidualPP,
+    consecutiveSameExitPercentagePoints:100*(sameExitShare-obs.consecutiveSameExitShare),
+    p10Seconds:measured.p10-obs.p10S,p90Seconds:measured.p90-obs.p90S},
+   gate:{
+    medianWithin30Seconds:Math.abs(medianResidual)<=c.observed.takeoffIntervals.gate.medianAbsToleranceSeconds,
+    shareLE120Within10PP:Math.abs(share120ResidualPP)<=c.observed.takeoffIntervals.gate.shareLE120AbsoluteTolerancePercentagePoints,
+    status:Math.abs(medianResidual)<=30&&Math.abs(share120ResidualPP)<=10?
+     'PASS':'FAIL_OBSERVED_TAKEOFF_INTERVAL_GATE',
+    sameExitShare:'REPORT_ONLY',
+    sourceStatus:'DEVELOPMENT_FIT_NO_SEPARATE_HOLDOUT'}
+  };
+ }
+ return {label:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS',
+  early:result.early,late:result.late,
+  overall:result.early.gate.status==='PASS'&&result.late.gate.status==='PASS'?
+   'PASS':'FAIL_OBSERVED_TAKEOFF_INTERVAL_GATE'};
+}
 function chooseSwaps(m,c){
  // Disjoint adjacent swaps: TP followed by jet on SAME EXIT, only
  // when the *request-time* difference does not already exceed the
