@@ -1,0 +1,257 @@
+{
+  "schema": 1,
+  "preset": "A13_MECHANICS_ONLY_UNVALIDATED",
+  "nonOperational": true,
+  "sourceComments": [
+    6867161126,
+    6867307513,
+    6867633651,
+    6877178756,
+    6877190634,
+    6877231875,
+    "pullrequestreview-5905137012",
+    "pullrequestreview-5907827059"
+  ],
+  "mainBaseSha": "3deafff1f20d1f2218f38c07cec53e43a0dd88ab",
+  "observed": {
+    "departurePeaks": "SEP2026_30_DAYS",
+    "departurePeakMeanPerHour": 15.8,
+    "departurePeakMaxPerHour": 20,
+    "sameExitWithin180S": {
+      "nPairs": 52,
+      "airborneFollowerDistanceMedianNM": 5.6,
+      "airborneFollowerDistanceP10NM": 4.5,
+      "radial30FollowerDistanceMedianNM": 15.6,
+      "radial30FollowerDistanceP10NM": 10.1,
+      "radial40FollowerDistanceMedianNM": 18.1,
+      "radial40FollowerDistanceMinNM": 7.3
+    },
+    "exitSharesPercent": {
+      "GTQ": 37,
+      "ASMOX": 21,
+      "RAPOR": 18,
+      "DYOUT": 17,
+      "DIK": 5,
+      "OTHER_UNKNOWN": 2
+    },
+    "gate40TimeGapChangeMedianSeconds": {
+      "TP-J": -120,
+      "J-TP": 119,
+      "J-J": 4
+    },
+    "sameExitApproxAirborneGapS": 120,
+    "backgroundArrivalReference": {
+      "earlyHour": 1,
+      "lateHour": 7,
+      "sourceComment": 6877231875,
+      "early03xx": {
+        "days": 12,
+        "departuresMean": 16.3,
+        "arrivalsMean": 0.9
+      },
+      "early04xx": {
+        "days": 6,
+        "departuresMean": 14.2,
+        "arrivalsMean": 0.7
+      },
+      "morning08xx": {
+        "days": 9,
+        "departuresMean": 16.6,
+        "arrivalsMean": 6.7
+      },
+      "afternoon16xx": {
+        "days": 3,
+        "departuresMean": 14.3,
+        "arrivalsMean": 7
+      }
+    },
+    "takeoffIntervals": {
+      "source": "Claude PR #4 review pullrequestreview-5905137012; ANA September 2026 IFR take-off times (whole-minute act_date_d)",
+      "observedTimeResolutionSeconds": 60,
+      "early": {
+        "waves": "03-04 UTC departure peak",
+        "intervals": 263,
+        "p10S": 120,
+        "medianS": 120,
+        "p90S": 360,
+        "shareLE60": 0.08,
+        "shareLE120": 0.51,
+        "shareLE180": 0.72,
+        "consecutiveSameExitShare": 0.3
+      },
+      "late": {
+        "waves": "08/16 UTC departure peak",
+        "intervals": 180,
+        "p10S": 60,
+        "medianS": 180,
+        "p90S": 420,
+        "shareLE60": 0.11,
+        "shareLE120": 0.38,
+        "shareLE180": 0.6,
+        "consecutiveSameExitShare": 0.18
+      },
+      "gate": {
+        "medianAbsToleranceSeconds": 30,
+        "shareLE120AbsoluteTolerancePercentagePoints": 10,
+        "scope": "DEVELOPMENT_ONLY_POOLED_CURRENT_FIFO_MEASURED_HOUR_BY_WAVE_ACROSS_FOUR_DEMAND_LEVELS_50_SEEDS",
+        "status": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS",
+        "sameExitShare": "REPORT_ONLY_NO_HARD_TOLERANCE",
+        "observationOperator": "FLOOR_EACH_ABSOLUTE_TAKEOFF_TIMESTAMP_TO_UTC_MINUTE_BEFORE_DIFFERENCE"
+      }
+    }
+  },
+  "fittedSpeedContrast": {
+    "jetAnchorKt": 300,
+    "jetAnchorStatus": "HYPOTHETICAL_NOT_IDENTIFIED_FROM_GAP_CHANGE",
+    "targetTPJetChangeSeconds": -120,
+    "targetJetTPChangeSeconds": 119,
+    "targetJetJetChangeSeconds": 4,
+    "fitRule": "LEAST_SQUARES_TO_TWO_ANTISYMMETRIC_TYPE_CONTRASTS; J-J_FIXED_ZERO",
+    "sourceStatus": "FITTED_TO_SEP2026_DEV_CHANGE_MEDIANS_CONDITIONAL_ON_300KT_JET_ANCHOR",
+    "noClaimOfTwoIndependentlyIdentifiedSpeeds": true,
+    "jetAnchorSensitivityKt": [
+      260,
+      300,
+      340
+    ]
+  },
+  "demand": {
+    "departureLevelsPerHour": [
+      14,
+      16,
+      18,
+      20
+    ],
+    "backgroundArrivalsPerHour": [
+      1,
+      7
+    ],
+    "durationHours": 2,
+    "measurementStartMs": 1800000,
+    "measurementEndMs": 5400000,
+    "drainEndMs": 9000000,
+    "departureJitterFraction": 0.4,
+    "arrivalJitterFraction": 0.08
+  },
+  "fleet": {
+    "turbopropShare": 0.23,
+    "heavyJetShareWithinJets": 0.12,
+    "provenance": "SYNTHETIC_UNVALIDATED: no observed September departure type mix supplied"
+  },
+  "categories": {
+    "JET": {
+      "lineupMs": 50000,
+      "rollMs": 55000,
+      "runwayClearAfterAirborneMs": 10000
+    },
+    "TURBOPROP": {
+      "lineupMs": 45000,
+      "rollMs": 45000,
+      "runwayClearAfterAirborneMs": 10000
+    },
+    "HEAVY_JET": {
+      "lineupMs": 50000,
+      "rollMs": 70000,
+      "runwayClearAfterAirborneMs": 10000
+    }
+  },
+  "arrivals": {
+    "runwayOccupancyMs": 75000,
+    "source": "A1.2_SYNTHETIC_UNVALIDATED_ROT; ARR_TIMINGS_NOT_OBSERVED_REQUESTS"
+  },
+  "reorder": {
+    "maxPositions": 1,
+    "maxAdditionalDelayMs": 120000,
+    "status": "UNVALIDATED_SENSITIVITY; CTOT_ATFM_SLOTS_NOT_MODELLED"
+  },
+  "intervalPresets": {
+    "CURRENT": {
+      "extraSameExitMs": 0,
+      "extraDifferentExitMs": 0,
+      "source": "CURRENT_NO_ADDED_INTERVAL; EXISTING_HARD_PROTECTIONS_PRESERVED"
+    },
+    "SEP2026_OBSERVED_SAME_EXIT_120S": {
+      "extraSameExitMs": 120000,
+      "extraDifferentExitMs": 0,
+      "source": "SENSITIVITY_ONLY_OBSERVED_APPROX_120S_NOT_OPERATIONAL_MINIMUM"
+    }
+  },
+  "gate": {
+    "definitions": [
+      {
+        "id": "RADIAL_30_NM",
+        "distanceNM": 30
+      },
+      {
+        "id": "RADIAL_40_NM",
+        "distanceNM": 40
+      }
+    ],
+    "geometryStatus": "HYPOTHETICAL_STRAIGHT_RADIAL_EQUIVALENT_NOT_ACTUAL_TMA_OR_EXIT_FIX",
+    "missingCrossingProbability": 0.02,
+    "missingnessStatus": "SYNTHETIC_INJECTED_NOT_OBSERVED",
+    "differentExitSpacingStatus": "NO_SPACING_CLAIM",
+    "exitFixCoordinates": null
+  },
+  "replication": {
+    "seeds": 50,
+    "seedStart": 20261114,
+    "seedStride": 1,
+    "pairedBootstrapReplicates": 1000,
+    "bootstrapSeed": 20261120,
+    "confidence": 0.95
+  },
+  "boundaries": {
+    "wakeAndSurveillance": "READ_ONLY_PREEXISTING_PROTECTIONS_NOT_REPLACED",
+    "runwayClear": "SERIAL_RUNWAY_OCCUPANCY",
+    "lvp": false,
+    "ctotAtfm": "NOT_MODELLED"
+  },
+  "output": {
+    "status": "MECHANICS_ONLY_UNVALIDATED",
+    "noOperationalCapacityClaim": true
+  },
+  "readyTimeProcess": {
+    "kind": "BUNCHED_WAVE_READY_TIMES",
+    "status": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT",
+    "calibration": "DETERMINISTIC_GRID_SEARCH_ON_PUBLISHED_AGGREGATES_NO_RAW_MOVEMENT_RECORDS",
+    "early": {
+      "singleFraction": 0.12,
+      "tripleFraction": 0.12,
+      "withinClusterGapMs": 60000,
+      "centerJitterFraction": 0.1
+    },
+    "late": {
+      "singleFraction": 0.24,
+      "tripleFraction": 0,
+      "withinClusterGapMs": 90000,
+      "centerJitterFraction": 0
+    },
+    "restrictions": "Synthetic requests, not observed taxi-ready/clearance/CTOT timestamps",
+    "queueReadyDefinition": "Request time means synthetic runway-ready time; departures wait if runway occupied.",
+    "fitAudit": {
+      "sourceReview": "pullrequestreview-5907827059",
+      "sourceStatus": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT",
+      "observedOperator": "FLOOR_EACH_ABSOLUTE_TAKEOFF_TIMESTAMP_TO_UTC_MINUTE_BEFORE_DIFFERENCE",
+      "calibrationDevelopmentSeeds": 12,
+      "gridCombinationsPerWave": 120,
+      "objective": "|median residual|/30 + |share <=120 residual pp|/10 + 0.1*|P90 residual|/180",
+      "earlyFit": {
+        "medianS": 120,
+        "shareLE120": 0.5105820105820106,
+        "p10S": null,
+        "p90S": 360,
+        "loss": 0.005820105820105725
+      },
+      "lateFit": {
+        "medianS": 180,
+        "shareLE120": 0.3801324503311258,
+        "p10S": null,
+        "p90S": 360,
+        "loss": 0.03465783664459133
+      },
+      "verification": "RUN_ALL_50_SEEDS; 12 INCLUDED_IN_FIT; NOT_A_HOLDOUT",
+      "warning": "Ready-time parameters inferred from whole-minute take-off interval aggregates, not independently observed runway-ready times. No separate departure holdout."
+    }
+  }
+}
