@@ -11,7 +11,7 @@ The source contains September 2026 departure-peak aggregates, not reconstructed
 flight requests or observed unconstrained demand. Synthetic departure demand:
 **14, 16, 18, 20/h**, each with **1 ARR/h** (early wave, observed approx 0.7–0.9)
 or **7 ARR/h** (08:xx UTC, observed approx 6.7) over two hours.
-Synthetic departure requests include type, exit and demand jitter. The exit
+Synthetic departure requests include type, exit and C1 bunched runway-ready times. The exit
 assignment uses the published pooled proportions: GTQ **37%**, ASMOX 21%,
 RAPOR 18%, DYOUT 17%, DIK 5%, **OTHER_UNKNOWN 2%**. The missing 2% is
 an explicit residual, not silently reassigned. Observed busiest departure-hour
@@ -20,6 +20,59 @@ mean 15.8/h, maximum 20/h, is realised output, NOT demand or capacity.
 **Type mix is not empirically known** in these aggregates; synthetic TP share
 and heavy share are marked UNVALIDATED in the config. Mean speed profiles are
 an abstract radial-distance model rather than measured ELLX SID tracks.
+
+## C1: observed take-off intervals and bunched ready-time fit
+
+Claude's PR #4 review `5905137012` provides ANA September 2026 IFR
+**take-off** time-interval aggregates, derived from whole-minute
+`act_date_d` timestamps (not controller runway-ready/line-up times).
+The early 03/04 UTC peak contains **263** consecutive intervals,
+P10/median/P90 **120/120/360s**, and **51% ≤120s**.
+The 08/16 UTC peak contains **180** intervals,
+P10/median/P90 **60/180/420s**, and **38% ≤120s**.
+Consecutive same-exit shares **30% early** and **18% late** are
+reported against, but never included in the fitting gate.
+
+Synthetic runway-ready requests now arrive in **clusters**, not
+equally spaced requests. Each cluster is 1, 2 or 3 aircraft according
+to a seeded, wave-specific categorical distribution, with a within-
+cluster ready-time gap and wave-level centre spacing. Ready time is a
+**hypothetical input**, not a reconstructed movement or ATFM time.
+
+The deterministic development-only grid search
+(`node study/a13/fit-ready-cli.mjs`) evaluates **120 parameter
+combinations per wave**, **12 fixed development seeds**, the four
+approved 14/16/18/20 departures/hour cases, and their proper
+1 or 7 background arrivals/hour. It minimises normalised deviations
+from observed median and share ≤120s, with P90 as a low-weight
+descriptive term. The two selected parameter families are stored in
+`MECHANICS_ONLY.json`, labelled
+`FITTED_TO_SEP2026_TAKEOFF_INTERVALS`.
+The full **50-seed** separate replication rechecks each wave's
+**FIFO CURRENT** take-off events within the one-hour measurement
+window. The preregistered gate requires:
+**|model median − observed median| ≤30s** AND
+**|model share ≤120s − observed share| ≤10 percentage points**.
+This is an in-model development-consistency gate, **not sealed
+out-of-sample validation**. P10, P90, shares ≤60/180 and same-exit
+shares remain report-only; these may reveal structural mismatches
+even if the two stated gates pass.
+
+The candidate reports the number of viable one-position swaps,
+the percentage of seeds with at least one accepted swap, and paired
+FIFO-versus-candidate changes to departures, total delay and
+40NM gate-time differences, including zero or adverse outcomes.
+
+## N1: jet-speed-anchor sensitivity
+
+The default **300kt** synthetic jet anchor remains hypothetical.
+Two additional **260kt** and **340kt** anchor cases rerun the
+identical 50-seed paired grid, with the turboprop speed recomputed
+from the unchanged fitted **119.5s** 40NM travel-time contrast.
+For each anchor, show type speeds, fit residuals and gate-time and
+sequencing outcomes. The three anchors are **sensitivity cases**,
+not measured or independently fitted jet climb speeds, and none
+changes the input take-off intervals or operational restrictions.
 
 ## A1 speed-contrast calibration (development medians only)
 
