@@ -210,9 +210,9 @@ test('B2: observed 20-21 gate is explicitly evaluated and nonmatching demand is 
  assert.equal(levels.saturatedArrivalOnly.fullMixtureTailSelected,0);
  assert.equal(levels.saturatedArrivalOnly.observedReferenceApproxArrivalsPerHour,22);
 });
-test('A12/E5: exact zero-slack threshold served and negative slack opportunity rejected',()=>{
+test('A12/E5: physical gap serves while incremental gate holds a departure in FIFO until drain',()=>{
  const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
- c.maxArrivalDeferralMs=100000;
+ c.maxIncrementalArrivalDelayMs=100000;
  const a=simpleArr('SYN-A',0),b=simpleArr('SYN-B',150000);
  const d=simpleDep('SYN-D',a.id,b.id);
  const r=simulate(synthetic([a,b],[d]),c,{sequence:CONDITIONAL,policy:TIME});
@@ -221,10 +221,12 @@ test('A12/E5: exact zero-slack threshold served and negative slack opportunity r
  assert.ok(r.departures[0].bindingReasons.includes('DEPARTURE_PHYSICAL') ||
   r.departures[0].bindingReasons.includes('ARRIVAL_A11_LOCKED_DELIVERED_SPACING'));
  assert.ok(r.departures[0].events.departureRollStartMs>=r.departures[0].events.arrivalRunwayClearMs);
- const harsh=clone(c);harsh.maxArrivalDeferralMs=0;
+ const harsh=clone(c);harsh.maxIncrementalArrivalDelayMs=0;
  const early=simulate(synthetic([a,{...b,requestMs:90000}],[d]),harsh,{sequence:SEQUENTIAL,policy:TIME});
- assert.equal(early.departures[0].status,'censored');
- assert.equal(early.departures[0].missedOpportunity,true);
+ assert.equal(early.departures[0].status,'served');
+ assert.equal(early.departures[0].reason,'DRAIN_FIFO_AFTER_FINAL_ARRIVAL');
+ assert.ok(early.events.some(e=>e.event==='fifo-hold-next-gap'));
+ assert.equal(early.departures[0].missedOpportunity,false);
  assert.equal(early.totals.demand,3);
 });
 test('A12/E5: simultaneous distance planning and physical gap can be labelled independently',()=>{
@@ -359,4 +361,40 @@ test('B3: reproducible matched seed and paired-difference sign convention',()=>{
  const gate=level.observedGate;
  assert.equal(gate.status,'REPLICATED_OBSERVED_COMPARATOR');
  assert.ok(['PASS','FAIL_OBSERVED_VALIDITY_GATE'].includes(gate.verdict));
+});
+
+test('B4: cumulative arrival delay is reported but never vetoes release',()=>{
+ const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
+ c.maxIncrementalArrivalDelayMs=90000;
+ const a=simpleArr('SYN-A',0),b=simpleArr('SYN-B',30000),f=simpleArr('SYN-C',60000);
+ const d=simpleDep('SYN-D','SYN-B','SYN-C','MEDIUM_JET',0);
+ const m=synthetic([a,b,f],[d]);
+ const r=simulate(m,c,{sequence:CONDITIONAL,policy:TIME});
+ assert.ok(r.arrivals.at(-1).delayMs>90000);
+ assert.equal(r.departures[0].status,'served');
+ assert.equal(r.metrics.missedDepartureOpportunities,0);
+});
+test('B4: held departure is retried, FIFO order is preserved, no request discarded before drain',()=>{
+ const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
+ c.maxIncrementalArrivalDelayMs=0;
+ const arr=[0,100000,200000,300000,400000].map((t,i)=>simpleArr('A'+i,t));
+ const d1=simpleDep('D1','A0','A1','HEAVY_JET',0);
+ const d2=simpleDep('D2','A2','A3','MEDIUM_JET',120000);
+ const result=simulate(synthetic(arr,[d1,d2]),c,{sequence:SEQUENTIAL,policy:TIME});
+ assert.deepEqual(result.departures.map(x=>x.id),['D1','D2']);
+ assert.ok(result.departures.every(x=>x.status==='served'));
+ assert.ok(result.departures[0].timeMs<=result.departures[1].timeMs);
+ assert.ok(result.events.some(e=>e.event==='fifo-hold-next-gap'));
+ assert.equal(result.totals.demand,7);
+ assert.equal(result.totals.censored,0);
+});
+test('B4: censored FIFO requests only at insufficient drain horizon',()=>{
+ const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
+ c.drainEndMs=3600000;c.maxIncrementalArrivalDelayMs=0;
+ const arr=[0,100000,200000].map((t,i)=>simpleArr('A'+i,t));
+ const d=simpleDep('D1','A0','A1','HEAVY_JET',3599000);
+ const r=simulate(synthetic(arr,[d]),c,{sequence:SEQUENTIAL,policy:TIME});
+ assert.equal(r.departures[0].status,'censored');
+ assert.equal(r.departures[0].reason,'drain-horizon');
+ assert.equal(r.departures[0].missedOpportunity,true);
 });
