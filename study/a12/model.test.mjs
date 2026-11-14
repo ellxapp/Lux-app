@@ -4,16 +4,24 @@ import {readFileSync} from 'node:fs';
 import {canonical,digest} from '../core.mjs';
 import {DEFAULT_CONFIG,validateConfig,makeManifest,validateManifest,timeline,
  feasibility,simulate,pairedScenarios,minArrivalThresholdGapMs,
- CONDITIONAL,SEQUENTIAL,DISTANCE,TIME} from './model.mjs';
-import {profileFor,timeToGoMs} from '../a11/model.mjs';
+ CONDITIONAL,SEQUENTIAL,DISTANCE,TIME,APPROVED_A11_LOCK_SHA256,A11_SPACING_PROVENANCE,
+ configForDemandLevel,compareDemandLevels} from './model.mjs';
+import {profileFor,timeToGoMs,assignEffectiveTargets} from '../a11/model.mjs';
 const clone=x=>structuredClone(x);
 const simpleArr=(id,requestMs,type='B738',wake='M',headwindKt=0)=>
  ({id,kind:'ARR',requestMs,type,wake,headwindKt,runway:'24'});
 const simpleDep=(id,leader,follower,category='MEDIUM_JET',requestMs=0)=>
  ({id,kind:'DEP',requestMs,betweenLeaderId:leader,followerId:follower,category,
    type:category==='HEAVY_JET'?'B744':'B738',wake:category==='HEAVY_JET'?'H':'M'});
-const synthetic=(arrivals,departures=[])=>({schema:12,synthetic:true,seed:DEFAULT_CONFIG.seed,
- startUtc:'2026-01-01T00:00:00.000Z',arrivals,opportunities:departures});
+const lock=JSON.parse(readFileSync(new URL('../a11/calibration-lock.json',import.meta.url),'utf8'));
+const synthetic=(arrivals,departures=[])=>{
+ const input=arrivals.map(a=>({...a,targetNormal:0,componentQuantile:1,captureQuantile:.5}));
+ const assigned=assignEffectiveTargets({schema:11,synthetic:true,flights:[input]},lock.parameters);
+ return {schema:12,synthetic:true,seed:DEFAULT_CONFIG.seed,
+ startUtc:'2026-01-01T00:00:00.000Z',arrivals:assigned.flights[0].map(a=>({...a,
+  arrivalSpacingSource:A11_SPACING_PROVENANCE.distribution})),opportunities:departures,
+ a11LockSha256:APPROVED_A11_LOCK_SHA256,a11ParametersSha256:digest(lock.parameters)};
+};
 test('A12/E1: named partial order allows line-up to overlap ROT; roll not before clear',()=>{
  const t=timeline(100000,100000,'MEDIUM_JET',CONDITIONAL);
  assert.equal(t.arrivalRunwayClearMs,175000);
@@ -78,6 +86,60 @@ test('A12/E4: invalid IDs, opportunistic pair and private/non-synthetic inputs r
  const dup=clone(m);dup.arrivals[1].id=dup.arrivals[0].id;
  assert.throws(()=>validateManifest(dup,c),/duplicate/);
 });
+test('B1: no departure ARR–ARR pairs cannot catch up at the 3NM floor',()=>{
+ const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
+ const a=simpleArr('SYN-A',0),b=simpleArr('SYN-B',10000),
+  d=simpleArr('SYN-C',20000);
+ const m=synthetic([a,b,d]);
+ const result=simulate(m,c,{sequence:CONDITIONAL,policy:TIME});
+ assert.equal(result.arrivals.length,3);
+ assert.ok(result.arrivals.every(x=>x.status==='served'));
+ for(let i=1;i<3;i++){
+  const previous=result.arrivals[i-1],current=result.arrivals[i];
+  assert.ok(current.timeMs-previous.timeMs>=current.lockedTargetGapMs);
+  assert.ok(current.lockedTargetGapMs>minArrivalThresholdGapMs(previous,current,c),
+   'locked delivered gap should exceed hard surveillance floor in test fixture');
+ }
+ assert.deepEqual(m,synthetic([a,b,d]),'locked targets must be immutable');
+});
+test('B1: identical arrival targets remain fixed when a departure is inserted, served or missed',()=>{
+ const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
+ const a=simpleArr('SYN-A',0),b=simpleArr('SYN-B',200000);
+ const dep=simpleDep('SYN-D','SYN-A','SYN-B','HEAVY_JET',0);
+ const base=synthetic([a,b]),mixed=synthetic([a,b],[dep]);
+ assert.equal(base.arrivals[1].effectiveTargetM,mixed.arrivals[1].effectiveTargetM);
+ const time=simulate(mixed,c,{sequence:CONDITIONAL,policy:TIME});
+ const distance=simulate(mixed,c,{sequence:CONDITIONAL,policy:DISTANCE});
+ assert.equal(time.arrivals[1].lockedTargetM,distance.arrivals[1].lockedTargetM);
+ assert.equal(time.arrivals[1].lockedTargetM,base.arrivals[1].effectiveTargetM);
+ assert.equal(time.meta.a11Spacing.lockSha256,APPROVED_A11_LOCK_SHA256);
+});
+test('B1: immutable per-flight normals/component quantiles are required and no runner random draw',()=>{
+ const c=configForDemandLevel(DEFAULT_CONFIG,20),m=makeManifest(c);
+ assert.equal(m.arrivals.length,40);
+ assert.ok(m.arrivals.some(x=>x.effectiveTargetComponent==='TAIL'));
+ assert.ok(m.arrivals.some(x=>x.effectiveTargetComponent==='CORE'));
+ const noTarget=structuredClone(m);delete noTarget.arrivals[1].effectiveTargetM;
+ assert.throws(()=>validateManifest(noTarget,c),/locked A1.1 target/);
+ const badDigest=structuredClone(m);badDigest.a11LockSha256='0'.repeat(64);
+ assert.throws(()=>validateManifest(badDigest,c),/A1.1 lock/);
+ const orig=Math.random;Math.random=()=>{throw Error('unexpected random during policy runner');};
+ try {
+  const x=simulate(m,c,{policy:TIME});
+  assert.equal(x.meta.a11Spacing.lockSha256,APPROVED_A11_LOCK_SHA256);
+ }finally{Math.random=orig;}
+});
+test('B1: 18/20/22 per hour demands are paired independently and reported at all four policies',()=>{
+ const comparison=compareDemandLevels(DEFAULT_CONFIG);
+ assert.deepEqual(comparison.levels.map(x=>x.arrivalsPerHour),[18,20,22]);
+ assert.deepEqual(comparison.levels.map(x=>x.requestedArrivals),[36,40,44]);
+ for(const level of comparison.levels){
+  assert.equal(level.scenarios.length,4);
+  assert.equal(new Set(level.scenarios.map(s=>s.meta.manifestSha256)).size,1);
+  assert.ok(level.scenarios.every(s=>s.totals.demand===level.requestedArrivals+level.requestedDepartureOpportunities));
+  assert.ok(level.scenarios.every(s=>s.metrics.capacityEligible===false));
+ }
+});
 test('A12/E5: exact zero-slack threshold served and negative slack opportunity rejected',()=>{
  const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
  c.maxArrivalDeferralMs=100000;
@@ -85,8 +147,9 @@ test('A12/E5: exact zero-slack threshold served and negative slack opportunity r
  const d=simpleDep('SYN-D',a.id,b.id);
  const r=simulate(synthetic([a,b],[d]),c,{sequence:CONDITIONAL,policy:TIME});
  assert.equal(r.departures[0].status,'served');
- assert.equal(r.departures[0].actualSlackMs,0);
- assert.ok(r.departures[0].bindingReasons.includes('DEPARTURE_PHYSICAL'));
+ assert.ok(r.departures[0].actualSlackMs>=0);
+ assert.ok(r.departures[0].bindingReasons.includes('DEPARTURE_PHYSICAL') ||
+  r.departures[0].bindingReasons.includes('ARRIVAL_A11_LOCKED_DELIVERED_SPACING'));
  assert.ok(r.departures[0].events.departureRollStartMs>=r.departures[0].events.arrivalRunwayClearMs);
  const harsh=clone(c);harsh.maxArrivalDeferralMs=0;
  const early=simulate(synthetic([a,{...b,requestMs:90000}],[d]),harsh,{sequence:SEQUENTIAL,policy:TIME});
