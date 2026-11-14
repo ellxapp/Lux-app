@@ -218,6 +218,37 @@ individual seed traces for every remaining exception. The model remains
 **mechanics only**; source runway-event timings and synthetic departure
 requests are not observed records.
 
+## B5: whole-run monotonicity and corrected observed-like gate
+
+Claude's PR #3 review 5903461437 corrects the observed-like consistency
+criterion. For the conditional-line-up + DISTANCE comparator at 20 and
+21 ARR/h, the aggregate gate is **all six requested departures served by
+the drain horizon**, **mean measured departures/h between 2.5 and 3.5**,
+and **mean measured arrivals/h between 19 and 21**. The fraction of
+seeds with at least three departures *inside the same one-hour measurement
+window* is report-only because queue releases can cross that window
+boundary. Mean departure delay remains reported. This is a synthetic
+aggregate consistency check, NOT measured local departure timing or
+operational validation.
+
+For each demand level (18/20/21/22), each departure request profile
+(insertable and observed-like), and each planning policy (TIME and
+DISTANCE), B5 compares the same 50 seed-level traffic manifests across
+CONDITIONAL vs SEQUENTIAL. The primary whole-run monotonicity rule is:
+CONDITIONAL must serve **at least** as many departures by the drain
+horizon and have **no greater total departure delay** across departures
+that actually depart. Per-seed comparisons report served count, total
+delay, mean delay and censored requests for both sequences. Differing
+served counts affect the denominator of summed delay; the raw terms are
+shown rather than hidden.
+
+Violation share must be strictly **below 5%** to meet Claude's review
+criterion. If it is not, the candidate includes the three worst
+seed-level traces with departure identities, requests, release times,
+delay and status differences for further review. One-hour window
+monotonicity remains a separate, descriptive boundary-sensitive
+diagnostic and is NOT the B5 merge criterion.
+
 ## Scope and limitations
 
 One DEP opportunity per selected adjacent ARR pair; no multi-runway
