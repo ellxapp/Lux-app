@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "preset": "A12_MECHANICS_ONLY_UNVALIDATED",
+  "nonOperational": true,
+  "source": "ellxapp/panel#6 comments 6865541177, 6867633651 section 2, 6870096309, 6870125771, 6870153540",
+  "model": "ARR-DEP-ARR_TIME_GAP_ABSTRACT",
+  "baselineSequence": "LINEUP_BEHIND_LANDING",
+  "sensitivitySequence": "SEQUENTIAL_AFTER_RUNWAY_CLEAR",
+  "arrivalROTMs": 75000,
+  "arrivalROTSource": "HYPOTHETICAL within EUROCONTROL 2019 reported ARR ROT 66-109s category range (not certified ELLX)",
+  "airborneToFollowerThresholdBufferMs": 20000,
+  "bufferSource": "SYNTHETIC_UNVALIDATED",
+  "departureByCategory": {
+    "MEDIUM_JET": {
+      "departureLineupMs": 50000,
+      "departureRollToAirborneMs": 55000,
+      "source": "SYNTHETIC_UNVALIDATED"
+    },
+    "HEAVY_JET": {
+      "departureLineupMs": 50000,
+      "departureRollToAirborneMs": 70000,
+      "source": "SYNTHETIC_UNVALIDATED"
+    },
+    "TURBOPROP": {
+      "departureLineupMs": 45000,
+      "departureRollToAirborneMs": 45000,
+      "source": "SYNTHETIC_UNVALIDATED"
+    }
+  },
+  "distancePlanningNM": {
+    "MEDIUM_JET": 8,
+    "HEAVY_JET": 10,
+    "TURBOPROP": 8
+  },
+  "surveillanceNM": 3,
+  "hardWakeSource": "A1.1 existing ICAO PANS-ATM distance minima, unchanged",
+  "maxArrivalDeferralMs": 90000,
+  "runwayClearAfterDepAirborneMs": 10000,
+  "measurementStartMs": 1800000,
+  "measurementEndMs": 5400000,
+  "drainEndMs": 7200000,
+  "stepMs": 1000,
+  "seed": 20261114,
+  "arrivalCount": 90,
+  "arrivalRequestStepMs": 66000,
+  "arrivalRequestJitterMs": 7000,
+  "departureEvery": 2,
+  "departureDemandDelayMs": 0,
+  "departureCategories": [
+    "MEDIUM_JET",
+    "HEAVY_JET",
+    "TURBOPROP"
+  ],
+  "environment": {
+    "lvp": false,
+    "weather": "GOOD_WEATHER_SYNTHETIC"
+  },
+  "reference": {
+    "development": {
+      "sourceComment": 6868493243,
+      "nonheavy": {
+        "nPairs": 191,
+        "intP10S": 162,
+        "intMedianS": 263
+      },
+      "heavy": {
+        "nPairs": 51,
+        "intP10S": 179,
+        "intMedianS": 260
+      }
+    },
+    "holdoutReportOnly": {
+      "sourceComment": 6869744816,
+      "nonheavy": {
+        "nPairs": 111,
+        "intP10S": 163.89,
+        "intMedianS": 334.47
+      },
+      "heavy": {
+        "nPairs": 24,
+        "intP10S": 184.74,
+        "intMedianS": 239.88
+      }
+    },
+    "labels": {
+      "development": "OBSERVED_AGGREGATE_DEV_NOT_FIT_TARGET",
+      "holdout": "OBSERVED_AGGREGATE_HOLDOUT_REPORT_ONLY"
+    }
+  }
+}
