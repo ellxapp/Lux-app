@@ -45,10 +45,24 @@ TAS-to-IAS conversion; they are NOT stabilised approach speeds.
 The speed profile carries a documented 180kt to 6NM /160kt to 4NM
 draft-SLA assumption before that estimated segment.
 
-The target distribution is shifted-lognormal, with shared shift/sigma and
-class mu for J-J, J-TP, TP-J. TP-TP mu is fixed from a report-only pooled
-median. Type draws are independent with approximately 29% turboprop;
-sequence correlation is not inferred. The manifest stores per-flight
+The target distribution is now an APPROVED TWO-COMPONENT FAMILY with exactly
+eight free parameters: core shift, core sigma, three core mu values by type
+pair (J-J, J-TP, TP-J), shared tail weight, tail mu and tail sigma. The
+core is shift + lognormal(mu_class, sigma); the tail is shift +
+lognormal(mu_tail, sigma_tail). The TP-TP core mu is fixed from the
+approved report-only pooled median. The tail is a statistical equivalent
+track-miles component, NOT a reconstruction of real vectoring.
+
+Types are sampled independently from the PUBLISHED 4-2NM IAS speed-family
+sample counts: B737NG/MAX 474, DH8D 393, E295 150, A320 75, E190 64,
+E75L 37, heavy B744/B748/B77L 228, other jets 388, other TP 42.
+Representative synthetic types B738, B744 and PC12 stand in for their
+pooled groups. Heavy samples have wake H; the other TP fallback is
+represented by PC12 (wake L). These speed-sample frequencies are a
+proxy for busy-period fleet composition, not identical to movement
+shares; any mismatch must be reported, not tuned into real flight records.
+Arrival pairs can be consecutive across runways as in the source
+observation operator; synthetic days still use a single runway. The manifest stores per-flight
 normal and capture quantiles; runs are deterministic and draw no randomness.
 Named preset study/a11/SEP2026_FITTED.json explicitly fixes the historical
 3NM surveillance floor, ICAO PANS-ATM wake matrix, observation/capture labels
@@ -63,8 +77,17 @@ diagnostic and not itself a go-around.
     node --version
     node --test study/*.test.mjs
     node --test study/a11/*.test.mjs
-    node study/a11/fit-cli.mjs --candidate-out /tmp/a11-lock.candidate.json --days 110 --per-day 60 --rounds 8
+    node study/a11/fit-cli.mjs --candidate-out /tmp/a11-lock.candidate.json
     node study/a11/2018-cli.mjs /tmp/a11-2018-discrepancy.json
+
+One candidate fitting policy is frozen in FIT_POLICY (seed 20261114,
+110 synthetic days × 60 arrivals, 60 maximum optimisation rounds,
+0.004 step-size convergence tolerance, fixed initial step sizes and
+shrink factor). CLI changes to days, sample size, seed or rounds are
+rejected. The candidate records iteration count, evaluations, convergence
+state, stopping reason and final step sizes. A MAX_ROUNDS stop is
+explicitly UNCONVERGED and must not be approved for locking without a
+revised policy and review.
 
 The command reads ONLY the published approved development aggregate file.
 It refuses a dirty tree unless --allow-dirty is recorded. It writes an
@@ -110,3 +133,24 @@ demand saturation, comparisons are marked NOT_COMPARABLE.
 - Neither 2018 synthetic-versus-technical capacity nor planned A1.2–A1.4
   interventions are calibration targets. No calibration-lock.json exists
   at this stage.
+
+## Claude PR #2 review response: N1–N5
+
+- **N1:** consecutive arrivals are not filtered for same runway.
+- **N2:** the synthetic minimum threshold-to-threshold interval is named
+  `arrivalRotProxyMs = 80000` in SEP2026_FITTED.json, labelled
+  SYNTHETIC_UNVALIDATED, with a final binding-event count. It is a proxy,
+  not a measured ROT or approved limit.
+- **N3:** the synthetic stream is deliberately saturated. Its hourly
+  counts are labelled SYNTHETIC_SATURATED_DEMAND_NOT_COMPARABLE_TO_OBSERVED_BUSY_COUNTS.
+  Observed busy hours (median roughly 16 IFR arrivals/h) are not a
+  throughput-calibration target.
+- **N4:** in the zero-wind reference runs, the model uses IAS as GS.
+  The published median IAS was inferred using
+  (ADS-B GS + METAR headwind) × 0.966; this approximates the source's
+  4-2NM GS (e.g., B738: 147.5 IAS versus 146.7 GS) only at the
+  reported median and does NOT validate winds or actual approach IAS.
+- **N5:** `2018-cli.mjs` additionally reads the unapproved candidate
+  and includes 3600 / fitted interval median against the 2018
+  observed/optimal arrival-only references. This is a labelled
+  arithmetic cross-check, never a capacity fit target.
