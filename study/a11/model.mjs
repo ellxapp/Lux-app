@@ -168,7 +168,6 @@ export function runAssignedManifest(manifest){
    const followerProfile=profileFor(base.type,base.headwindKt);
    const unconstrainedIntervalMs=lead?timeToGoMs(effectiveNM*NM,followerProfile):0;
    const rotProxy=SEP2026_FITTED.arrivalRotProxyMs;
-   if(lead&&unconstrainedIntervalMs<rotProxy)rotFloorBindings++;
    let intervalMs=lead?Math.max(rotProxy,unconstrainedIntervalMs):0;
    let minimumAlongPathNM=null;
    if(lead){
@@ -187,6 +186,7 @@ export function runAssignedManifest(manifest){
     }
     numberTargets++;
    }
+   if(lead&&unconstrainedIntervalMs<=rotProxy&&intervalMs===rotProxy)rotFloorBindings++;
    clockMs+=intervalMs;
    const deliveredNM=lead?distanceBeforeThresholdNM(intervalMs,followerProfile):null;
    arrivals.push({...base,requestMs:clockMs,
