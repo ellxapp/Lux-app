@@ -96,12 +96,16 @@ and has no separate sealed departure holdout.
 Under the fitted bunched morning-wave demand, restricting a candidate
 to a **single adjacent TP→jet same-exit swap** with at most **120 s
 additional individual delay** yields **rare accepted swaps**.
-In the first corrected C1 candidate, the 1 ARR/h, 20 DEP/h,
-CURRENT case accepted 12 swaps across 50 seed-level runs, but the
-candidate produced **no extra departures per measured hour** and only
-small changes to 40NM gate-time gaps. The C2 minute-quantised refit
-must be assessed afresh; it must not be claimed to establish a new
-capacity gain. The study's **preliminary, moderate-confidence finding**
+Following the C2 minute-quantised refit, the 1 ARR/h,
+20 DEP/h CURRENT case accepted **4 swaps across 50 seeds**.
+None of the 16 demand/background/preset cells produced additional
+departures per measured hour; paired 40NM gate-gap changes were
+small (at most approximately **+2.9 s in the per-seed P10 mean**
+for that 20 DEP/h case). Total departure delay increased by a mean
+**2 s per full run** in that case, rather than improving.
+At 7 background ARR/h, **no swaps** were accepted in any of
+the four tested departure-demand rates under either preset.
+This must not be claimed to establish a capacity gain. The study's **preliminary, moderate-confidence finding**
 is that **limited one-position resequencing has little effect at the
 modelled ELLX demand levels**. Potential benefits of longer-horizon
 planned sequencing (DMAN/TSAT) lie **outside A1.3**. CTOT/ATFM
