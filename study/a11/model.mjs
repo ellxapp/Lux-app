@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs';
 export const SEP2026_FITTED=Object.freeze(JSON.parse(readFileSync(new URL('./SEP2026_FITTED.json',import.meta.url),'utf8')));
 import {observeDay,stats,stratumPairs,hardMetrics,quantileType7,CAPTURE_DIGEST} from './observation.mjs';
 
-export const A11_MODEL_VERSION='A1.1-candidate-1';
+export const A11_MODEL_VERSION='A1.1-two-component-2';
 export const TARGET_MEANING='TARGET_AS_EQUIVALENT_TRACK_DISTANCE';
 const NM=1852, KT_M_PER_MS=1852/3600000;
 const SPEEDS=Object.freeze({
@@ -67,35 +67,67 @@ export function minimumCommonFinalNM(leaderProfile,followerProfile,intervalMs){
 
 function xorshift(seed){let x=(seed>>>0)||0x9e3779b9;return ()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};}
 function normal(next){return Math.sqrt(-2*Math.log(Math.max(1e-12,next())))*Math.cos(2*Math.PI*next());}
+// Published good-weather 4–2NM speed-observation family counts, not a claim
+// of September flight-level composition. Types are sampled independently.
+export const APPROVED_TYPE_WEIGHTS=Object.freeze([
+ {type:'B738',count:474,wake:'M'}, // B737NG/MAX pooled family
+ {type:'DH8D',count:393,wake:'M'},
+ {type:'E295',count:150,wake:'M'},
+ {type:'A320',count:75,wake:'M'},
+ {type:'E190',count:64,wake:'M'},
+ {type:'E75L',count:37,wake:'M'},
+ {type:'B744',count:228,wake:'H'}, // Heavy (B744/B748/B77L) pooled family
+ {type:'OTHER_J',count:388,wake:'M'},
+ {type:'PC12',count:42,wake:'L'} // Other TP proxy; PC12 is ICAO light
+]);
+export const TYPE_WEIGHTS_PROVENANCE='PUBLISHED_SPEED_SAMPLE_COUNTS_6868718102';
+const TYPE_TOTAL=APPROVED_TYPE_WEIGHTS.reduce((a,t)=>a+t.count,0);
+export function selectType(quantile){
+ if(!(quantile>=0&&quantile<1))throw Error('type quantile outside [0,1)');
+ let pick=quantile*TYPE_TOTAL;
+ for(const item of APPROVED_TYPE_WEIGHTS){pick-=item.count;if(pick<0)return item;}
+ return APPROVED_TYPE_WEIGHTS.at(-1);
+}
 export function makeScenarioManifest({seed=20261114,days=140,perDay=56}={}){
  if(!Number.isInteger(days)||days<1||!Number.isInteger(perDay)||perDay<20)throw Error('invalid sample policy');
  const next=xorshift(seed),flights=[];
  for(let day=0;day<days;day++){
   const local=[];
   for(let i=0;i<perDay;i++){
-   const tp=next()<.29;
-   const type=tp?'DH8D':next()<.65?'B738':'E295';
+   const selected=selectType(next());
    local.push({id:'SYN'+String(day).padStart(3,'0')+'F'+String(i).padStart(3,'0'),
-    type,kind:'ARR',wake:'M',dayId:'SYN-DAY-'+String(day).padStart(3,'0'),runway:day%2?'06':'24',ifr:true,
-    targetNormal:normal(next),captureQuantile:next(),headwindKt:0,deliveryErrorMs:0,
-    quantileSeed:seed});
+    type:selected.type,kind:'ARR',wake:selected.wake,
+    dayId:'SYN-DAY-'+String(day).padStart(3,'0'),runway:day%2?'06':'24',ifr:true,
+    targetNormal:normal(next),componentQuantile:next(),captureQuantile:next(),
+    headwindKt:0,deliveryErrorMs:0,quantileSeed:seed});
   }
   flights.push(local);
  }
- return {schema:11,synthetic:true,seed,days,perDay,flights};
+ return {schema:11,synthetic:true,seed,days,perDay,flights,
+  typeWeightsSha256:digest(APPROVED_TYPE_WEIGHTS),typeWeightsSource:TYPE_WEIGHTS_PROVENANCE};
 }
 export function wakeFloorNM(leader,follower){
  const allowed=['H','M','L'];
  if(!allowed.includes(leader)||!allowed.includes(follower))throw Error('unsupported wake / Super');
  return SEP2026_FITTED.wakeNM[leader]?.[follower]??SEP2026_FITTED.surveillanceNM;
 }
+// Exactly eight free parameters: shift, core sigma, core mu by three pair
+// classes, mixture weight, shared tail mu and shared tail sigma.
 export function parameterCheck(p){
- if(!p||p.mu.length!==3)throw Error('parameters required');
+ if(!p||!Array.isArray(p.mu)||p.mu.length!==3)throw Error('8-parameter mixture required');
  if(!Number.isFinite(p.shift)||p.shift<0||p.shift>4||
-    !Number.isFinite(p.sigma)||p.sigma<.04||p.sigma>1.6||
-    !p.mu.every(x=>Number.isFinite(x)&&x>=-1&&x<=3))throw Error('parameter bounds');
+    !Number.isFinite(p.sigma)||p.sigma<.04||p.sigma>1.4||
+    !p.mu.every(x=>Number.isFinite(x)&&x>=-.5&&x<=3.2)||
+    !Number.isFinite(p.w)||p.w<.01||p.w>.70||
+    !Number.isFinite(p.muTail)||p.muTail<1.2||p.muTail>4.0||
+    !Number.isFinite(p.sigmaTail)||p.sigmaTail<.06||p.sigmaTail>1.5)
+  throw Error('invalid 8-parameter mixture bounds');
  return p;
 }
+export const A11_PARAMETER_NAMES=Object.freeze(['shift','sigma','muJ_J','muJ_TP','muTP_J','w','muTail','sigmaTail']);
+export function parameterVector(p){parameterCheck(p);return[p.shift,p.sigma,...p.mu,p.w,p.muTail,p.sigmaTail];}
+export function fromParameterVector(v){if(!Array.isArray(v)||v.length!==8)throw Error('8 parameters required');return parameterCheck({
+ shift:v[0],sigma:v[1],mu:v.slice(2,5),w:v[5],muTail:v[6],sigmaTail:v[7]});}
 const pairKey=(leader,follow)=>{
  const tp=t=>['DH8D','PC12','AT72','AT75','AT76'].includes(t);
  return (tp(leader.type)?'TP':'J')+'-'+(tp(follow.type)?'TP':'J');
@@ -109,8 +141,12 @@ export function assignEffectiveTargets(manifest,params){
  const flights=manifest.flights.map(day=>day.map((base,i)=>{
   const lead=i?day[i-1]:null,key=lead?pairKey(lead,base):null;
   const mu=key==='J-J'?params.mu[0]:key==='J-TP'?params.mu[1]:key==='TP-J'?params.mu[2]:muTP;
-  const target=lead?Math.round((params.shift+Math.exp(mu+params.sigma*base.targetNormal))*NM):null;
-  return {...base,effectiveTargetM:target,effectiveTargetSource:TARGET_MEANING};
+  const component=base.componentQuantile<params.w?'TAIL':'CORE';
+  const target=lead?Math.round((params.shift+Math.exp(
+    component==='TAIL'?params.muTail+params.sigmaTail*base.targetNormal:
+    mu+params.sigma*base.targetNormal))*NM):null;
+  return {...base,effectiveTargetM:target,effectiveTargetComponent:lead?component:null,
+   effectiveTargetSource:TARGET_MEANING};
  }));
  return {...manifest,flights,assignedBy:'A1.1_DISTRIBUTION_GENERATOR',distributionParametersSha256:digest(params)};
 }
@@ -180,33 +216,57 @@ export function scoreModel(output,benchmark){
  return {maxNormalisedError:Math.max(...errors.map(x=>x.normalised)),hardMetrics:errors,
    fitNotRepresentable:output.totals.raiseFraction>SEP2026_FITTED.hardFloorRaiseLimitFraction};
 }
-export function fitDevelopment(benchmark,{seed=20261114,days=140,perDay=56,maxRounds=24}={}){
+// One published fitting policy, shared by the CLI, CI and Claude's reproduction.
+export const FIT_POLICY=Object.freeze({
+ seed:20261114,days:110,perDay:60,maxRounds:60,stepTolerance:.004,
+ startingSteps:[.30,.065,.085,.085,.085,.05,.12,.06],
+ shrinkFactor:.58,optimizer:'deterministic_bounded_coordinate_descent',
+ objective:'minimax_absolute_normalised_error',
+ requireFullConvergence:true
+});
+export function fitDevelopment(benchmark,{seed=FIT_POLICY.seed,days=FIT_POLICY.days,
+ perDay=FIT_POLICY.perDay,maxRounds=FIT_POLICY.maxRounds}={}){
  if(benchmark.status!=='OBSERVED_AGGREGATE_DEV'||benchmark.strata.length!==8||
-   Object.values(benchmark.hardTolerances).reduce((n,v)=>n+Object.keys(v).length,0)!==12)throw Error('only approved 12-metric development benchmark permitted');
+   Object.values(benchmark.hardTolerances).reduce((n,v)=>n+Object.keys(v).length,0)!==12)
+  throw Error('only approved 12-metric development benchmark permitted');
+ if(!Number.isSafeInteger(maxRounds)||maxRounds<0||maxRounds>FIT_POLICY.maxRounds)throw Error('invalid max rounds');
  const manifest=makeScenarioManifest({seed,days,perDay});
- const logMean=x=>Math.log(x);
- const initial={shift:1.8,sigma:.34,mu:[logMean(6.19-1.8),logMean(6.18-1.8),logMean(5.72-1.8)]};
+ const ln=x=>Math.log(x);
+ const initial={shift:1.5,sigma:.23,
+  mu:[ln(5.7-1.5),ln(5.65-1.5),ln(5.3-1.5)],w:.23,muTail:ln(10.5-1.5),sigmaTail:.48};
  let best=initial;
  let result=evaluateSynthetic(manifest,best),sc=scoreModel(result,benchmark);
- let step=[.35,.09,.12,.12,.12];
+ let step=[...FIT_POLICY.startingSteps],iterations=0,evaluations=1,improvements=0,shrinkEvents=0;
+ let termination='MAX_ROUNDS';
  for(let round=0;round<maxRounds;round++){
+  iterations++;
   let improved=false;
-  for(let j=0;j<5;j++)for(const direction of [-1,1]){
-   const vec=[best.shift,best.sigma,...best.mu];
+  for(let j=0;j<8;j++)for(const direction of [-1,1]){
+   const vec=parameterVector(best);
    vec[j]+=direction*step[j];
-   const trial={shift:vec[0],sigma:vec[1],mu:vec.slice(2)};
-   try{parameterCheck(trial);}catch{continue;}
-   const value=evaluateSynthetic(manifest,trial),check=scoreModel(value,benchmark);
-   if(check.maxNormalisedError+1e-10<sc.maxNormalisedError){
-    best=trial;result=value;sc=check;improved=true;
+   let trial;
+   try{trial=fromParameterVector(vec);}catch{continue;}
+   const value=evaluateSynthetic(manifest,trial),check=scoreModel(value,benchmark);evaluations++;
+   // A solution with >5% hard-floor raising is infeasible regardless of its fit.
+   const quality=check.maxNormalisedError+(check.fitNotRepresentable?100:0);
+   const oldQuality=sc.maxNormalisedError+(sc.fitNotRepresentable?100:0);
+   if(quality+1e-10<oldQuality){
+    best=trial;result=value;sc=check;improved=true;improvements++;
    }
   }
-  if(!improved)step=step.map(x=>x*.62);
-  if(Math.max(...step)<.002)break;
+  if(!improved){step=step.map(x=>x*FIT_POLICY.shrinkFactor);shrinkEvents++;}
+  if(!improved&&Math.max(...step)<FIT_POLICY.stepTolerance){
+   termination='STEP_TOLERANCE';break;
+  }
  }
- return {parameters:best,score:sc,output:result,manifest,
+ const stopping={termination,converged:termination==='STEP_TOLERANCE',
+  iterations,evaluations,improvements,shrinkEvents,finalStepSizes:step,
+  stepTolerance:FIT_POLICY.stepTolerance,maxRounds};
+ return {parameters:best,score:sc,output:result,manifest,stopping,
   provenance:{benchmarkSha256:digest(benchmark),captureDigest:CAPTURE_DIGEST,seed,
-   targetMeaning:TARGET_MEANING,fitObjective:'minimax-absolute-normalised-error',
-   modelVersion:A11_MODEL_VERSION,optimiser:'fixed-coordinate-search',
-   samplePolicy:{days,perDay,maxRounds},status:'CANDIDATE_NOT_APPROVED'}};
+   targetMeaning:TARGET_MEANING,fitObjective:FIT_POLICY.objective,
+   modelVersion:A11_MODEL_VERSION,parameterFamily:'SHARED_TWO_COMPONENT_SHIFTED_LOGNORMAL',
+   freeParameterCount:8,typeWeightsSha256:digest(APPROVED_TYPE_WEIGHTS),
+   optimiser:FIT_POLICY.optimizer,samplePolicy:{seed,days,perDay,maxRounds,
+    stepTolerance:FIT_POLICY.stepTolerance},status:'CANDIDATE_NOT_APPROVED'}};
 }
