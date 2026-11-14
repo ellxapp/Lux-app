@@ -451,9 +451,9 @@ function bootstrap(values,c,seed){
  return {method:'PAIRED_SEED_RESAMPLE_MEAN_PERCENTILE',replicates:b,
   lower:quant(out,.025),upper:quant(out,.975)};
 }
-export function replicate(c=CONFIG){
+export function replicate(c=CONFIG,{jetAnchorKt=c.fittedSpeedContrast.jetAnchorKt}={}){
  validateConfig(c);
- const fit=fittedSpeedContrast(c),cases=[];
+ const fit=fittedSpeedContrast(c,jetAnchorKt),cases=[];
  const metrics=['departuresInHour','arrivalsInHour','departuresByDrain','totalDepartureDelayS',
   'meanDepartureDelayS','sameExitNegativeGateGapCount'];
  for(const bg of c.demand.backgroundArrivalsPerHour)
@@ -463,7 +463,7 @@ export function replicate(c=CONFIG){
     for(let i=0;i<c.replication.seeds;i++){
      const seed=c.replication.seedStart+i*c.replication.seedStride;
      const manifest=makeManifest(c,{seed,departuresPerHour:rate,backgroundArrivalsPerHour:bg});
-     const pair=comparePair(manifest,c,{preset});
+     const pair=comparePair(manifest,c,{preset,jetAnchorKt});
      rows.push({seed,manifestSha256:pair.manifestSha256,fifo:pair.fifo,candidate:pair.candidate,
       syntheticDepartureTypes:manifest.departures.map(x=>x.category),
       syntheticExitCounts:Object.fromEntries(Object.keys(c.observed.exitSharesPercent).map(exit=>
@@ -477,6 +477,37 @@ export function replicate(c=CONFIG){
      return [key,{...stats(values),pairedMeanCI95:bootstrap(values,c,
       c.replication.bootstrapSeed+bg*10000+rate*101+(preset==='CURRENT'?0:3000)+k*13)}];
     }));
+    const pairedGate40Median=rows.map(r=>{
+     const a=r.candidate.metrics.sameExitGate40GapS.median;
+     const b=r.fifo.metrics.sameExitGate40GapS.median;
+     return isnum(a)&&isnum(b)?a-b:null;
+    }).filter(isnum);
+    const pairedGate40P10=rows.map(r=>{
+     const a=r.candidate.metrics.sameExitGate40GapS.p10;
+     const b=r.fifo.metrics.sameExitGate40GapS.p10;
+     return isnum(a)&&isnum(b)?a-b:null;
+    }).filter(isnum);
+    const gateTimePaired={
+     medianS:{...stats(pairedGate40Median),pairedMeanCI95:pairedGate40Median.length>=2?
+      bootstrap(pairedGate40Median,c,c.replication.bootstrapSeed+bg*20000+rate*211+
+       (preset==='CURRENT'?0:9000)+61):null},
+     p10S:{...stats(pairedGate40P10),pairedMeanCI95:pairedGate40P10.length>=2?
+      bootstrap(pairedGate40P10,c,c.replication.bootstrapSeed+bg*20000+rate*211+
+       (preset==='CURRENT'?0:9000)+67):null}
+    };
+    const swapsAccepted=rows.map(r=>r.candidate.swaps.length),
+     swapsEligible=rows.map(r=>r.candidate.eligibleSwapCount??0),
+     swapsRejected=rows.map(r=>r.candidate.rejectedSwapCount??0);
+    const swapAudit={
+     seedsWithAcceptedSwaps:swapsAccepted.filter(x=>x>0).length,
+     seedShareWithAcceptedSwaps:swapsAccepted.filter(x=>x>0).length/rows.length,
+     acceptedSwaps:stats(swapsAccepted),eligibleSwaps:stats(swapsEligible),
+     rejectedSwaps:stats(swapsRejected),
+     eligibleTotal:swapsEligible.reduce((a,b)=>a+b,0),
+     acceptedTotal:swapsAccepted.reduce((a,b)=>a+b,0),
+     limitMs:c.reorder.maxAdditionalDelayMs,maxPositions:c.reorder.maxPositions,
+     ctotAtfm:'NOT_MODELLED'
+    };
     const detail=rows.map(r=>{
      const summarizeRun=x=>({
       departuresByDrain:x.metrics.departuresByDrain,
@@ -528,8 +559,10 @@ export function replicate(c=CONFIG){
       differentExitPairs:rows.reduce((sum,r)=>sum+r[policy].metrics.differentExitPairs,0),
       noDifferentExitSpacingClaim:true};
     }
-    cases.push({backgroundArrivalsPerHour:bg,departureDemandPerHour:rate,preset,seedCount:rows.length,
+    cases.push({backgroundArrivalsPerHour:bg,departureDemandPerHour:rate,preset,
+     jetAnchorKt,seedCount:rows.length,
      fifo:summaries.fifo,candidate:summaries.candidate,pairedCandidateMinusFIFO:deltas,
+     pairedGate40GapCandidateMinusFIFO:gateTimePaired,swapAudit,
      gateSummaries:gates,
      exitMixAudit:{observedPercent:c.observed.exitSharesPercent,
       syntheticCounts:syntheticExitCounts,syntheticPercent:syntheticExitPercent,
@@ -542,7 +575,7 @@ export function replicate(c=CONFIG){
      representativeManifestSha256:representative.manifestSha256});
    }
  return {schema:1,status:'MECHANICS_ONLY_UNVALIDATED',version:VERSION,
-  mainBaseSha:c.mainBaseSha,lockSha256:LOCK,fit,sources:c.sourceComments,
+  mainBaseSha:c.mainBaseSha,lockSha256:LOCK,fit,jetAnchorKt,sources:c.sourceComments,
   cases,seedCount:c.replication.seeds,observed:c.observed,
   warnings:['Not an operational ATC, CTOT/ATFM, separation or runway capacity model',
    '300kt jet anchor is HYPOTHETICAL; only jet–TP travel-time contrast is identifiable from source medians',
