@@ -323,7 +323,10 @@ export function replicate(c=CONFIG){
      const seed=c.replication.seedStart+i*c.replication.seedStride;
      const manifest=makeManifest(c,{seed,departuresPerHour:rate,backgroundArrivalsPerHour:bg});
      const pair=comparePair(manifest,c,{preset});
-     rows.push({seed,manifestSha256:pair.manifestSha256,fifo:pair.fifo,candidate:pair.candidate});
+     rows.push({seed,manifestSha256:pair.manifestSha256,fifo:pair.fifo,candidate:pair.candidate,
+      syntheticDepartureTypes:manifest.departures.map(x=>x.category),
+      syntheticExitCounts:Object.fromEntries(Object.keys(c.observed.exitSharesPercent).map(exit=>
+       [exit,manifest.departures.filter(x=>x.exit===exit).length]))});
     }
     const summaries={};
     for(const policy of ['fifo','candidate'])
@@ -350,6 +353,15 @@ export function replicate(c=CONFIG){
        r.candidate.totals.requests===r.candidate.totals.served+r.candidate.totals.censored};
     });
     const representative=rows[0];
+    const syntheticExitCounts=Object.fromEntries(Object.keys(c.observed.exitSharesPercent)
+     .map(exit=>[exit,rows.reduce((sum,r)=>sum+r.syntheticExitCounts[exit],0)]));
+    const totalDepRequests=rows.length*rate*c.demand.durationHours;
+    const syntheticExitPercent=Object.fromEntries(Object.entries(syntheticExitCounts)
+     .map(([exit,count])=>[exit,100*count/totalDepRequests]));
+    const tpCount=rows.reduce((sum,r)=>sum+r.syntheticDepartureTypes.filter(x=>x==='TURBOPROP').length,0);
+    const typeMixAudit={syntheticTPSharePercent:100*tpCount/totalDepRequests,
+     hypotheticalTPSharePercent:100*c.fleet.turbopropShare,
+     observedTPSharePercent:null,source:'HYPOTHETICAL_NOT_OBSERVED_TYPE_MIX'};
     const gates={};
     for(const policy of ['fifo','candidate']){
      const samePairs=rows.flatMap(r=>r[policy].pairs.filter(p=>p.sameExit));
@@ -378,6 +390,10 @@ export function replicate(c=CONFIG){
     cases.push({backgroundArrivalsPerHour:bg,departureDemandPerHour:rate,preset,seedCount:rows.length,
      fifo:summaries.fifo,candidate:summaries.candidate,pairedCandidateMinusFIFO:deltas,
      gateSummaries:gates,
+     exitMixAudit:{observedPercent:c.observed.exitSharesPercent,
+      syntheticCounts:syntheticExitCounts,syntheticPercent:syntheticExitPercent,
+      syntheticTotalDepartures:totalDepRequests,source:'POOLED_OBSERVED_SHARES_APPLIED_TO_SYNTHETIC_SEEDED_REQUESTS'},
+     typeMixAudit,
      acceptance:{allConserved:detail.every(x=>x.conservation),
       anySwap:detail.some(x=>x.candidate.swapped>0),
       noSafetyMinimaChange:true,ctotAtfm:'NOT_MODELLED',operationalCapacity:false},
