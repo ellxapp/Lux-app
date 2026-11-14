@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "preset": "A12_MECHANICS_ONLY_UNVALIDATED",
+  "nonOperational": true,
+  "source": "ellxapp/panel#6 comments 6865541177, 6867633651 section 2, 6870096309, 6870125771, 6870153540",
+  "model": "ARR-DEP-ARR_TIME_GAP_ABSTRACT",
+  "baselineSequence": "LINEUP_BEHIND_LANDING",
+  "sensitivitySequence": "SEQUENTIAL_AFTER_RUNWAY_CLEAR",
+  "arrivalROTMs": 75000,
+  "arrivalROTSource": "HYPOTHETICAL within EUROCONTROL 2019 reported ARR ROT 66-109s category range (not certified ELLX)",
+  "airborneToFollowerThresholdBufferMs": 20000,
+  "bufferSource": "SYNTHETIC_UNVALIDATED",
+  "departureByCategory": {
+    "MEDIUM_JET": {
+      "departureLineupMs": 50000,
+      "departureRollToAirborneMs": 55000,
+      "source": "SYNTHETIC_UNVALIDATED"
+    },
+    "HEAVY_JET": {
+      "departureLineupMs": 50000,
+      "departureRollToAirborneMs": 70000,
+      "source": "SYNTHETIC_UNVALIDATED"
+    },
+    "TURBOPROP": {
+      "departureLineupMs": 45000,
+      "departureRollToAirborneMs": 45000,
+      "source": "SYNTHETIC_UNVALIDATED"
+    }
+  },
+  "distancePlanningNM": {
+    "MEDIUM_JET": 8,
+    "HEAVY_JET": 10,
+    "TURBOPROP": 8
+  },
+  "surveillanceNM": 3,
+  "hardWakeSource": "A1.1 existing ICAO PANS-ATM distance minima, unchanged",
+  "runwayClearAfterDepAirborneMs": 10000,
+  "measurementStartMs": 1800000,
+  "measurementEndMs": 5400000,
+  "drainEndMs": 7200000,
+  "stepMs": 1000,
+  "seed": 20261114,
+  "arrivalCount": 40,
+  "arrivalRequestStepMs": 180000,
+  "arrivalRequestJitterMs": 7000,
+  "departureEvery": 2,
+  "departureDemandDelayMs": 0,
+  "departureCategories": [
+    "MEDIUM_JET",
+    "HEAVY_JET",
+    "TURBOPROP"
+  ],
+  "environment": {
+    "lvp": false,
+    "weather": "GOOD_WEATHER_SYNTHETIC"
+  },
+  "reference": {
+    "development": {
+      "sourceComment": 6868493243,
+      "nonheavy": {
+        "nPairs": 191,
+        "intP10S": 162,
+        "intMedianS": 263
+      },
+      "heavy": {
+        "nPairs": 51,
+        "intP10S": 179,
+        "intMedianS": 260
+      }
+    },
+    "holdoutReportOnly": {
+      "sourceComment": 6869744816,
+      "nonheavy": {
+        "nPairs": 111,
+        "intP10S": 163.89,
+        "intMedianS": 334.47
+      },
+      "heavy": {
+        "nPairs": 24,
+        "intP10S": 184.74,
+        "intMedianS": 239.88
+      }
+    },
+    "labels": {
+      "development": "OBSERVED_AGGREGATE_DEV_NOT_FIT_TARGET",
+      "holdout": "OBSERVED_AGGREGATE_HOLDOUT_REPORT_ONLY"
+    }
+  },
+  "syntheticDemandNote": "50 fixed seeds for each of 18/20/21/22 ARR demand, paired conditional/sequential × distance/time; two separate departure demand profiles: insertable every-second-ARR opportunities, and observed-like 3 DEP/h including 2 heavy. All ground-event durations unvalidated.",
+  "arrivalDemandLevelsPerHour": [
+    18,
+    20,
+    21,
+    22
+  ],
+  "arrivalDemandHours": 2,
+  "observedValidityGate": {
+    "source": "Claude PR #3 review pullrequestreview-5903308924 (ANA September 2026 evening peak aggregate, 7 days)",
+    "status": "OBSERVED_AGGREGATE",
+    "demandLevelsPerHour": [
+      20,
+      21
+    ],
+    "sequence": "LINEUP_BEHIND_LANDING",
+    "policy": "DISTANCE",
+    "minMeasuredArrivalsPerHour": 19,
+    "maxMeasuredArrivalsPerHour": 21,
+    "minMeasuredDeparturesPerHour": 2,
+    "observedApproxDeparturesPerHour": 3,
+    "observedHeavyDeparturesPerHour": 2,
+    "observedPeakDays": 7,
+    "notes": "20-21 IFR ARR/h on 7 days with about 3 departures/h including 2 heavy; coarse descriptive consistency gate only, not a fitted target or capacity certification"
+  },
+  "saturatedArrivalOnly": {
+    "status": "SYNTHETIC_CORE_ONLY_UNVALIDATED",
+    "demandPerHour": 36,
+    "durationHours": 4,
+    "warmupHours": 1,
+    "referenceApproxRatePerHour": 22,
+    "source": "Claude review 5903308924; diagnostic only, not fitted to exact 22"
+  },
+  "replication": {
+    "seeds": 50,
+    "seedStart": 20261114,
+    "seedStride": 1,
+    "pairedMeanCiBootstrapReplicates": 2000,
+    "pairedMeanCiSeed": 20261217,
+    "quantiles": "TYPE7",
+    "confidence": 0.95,
+    "monotonicityMaxViolationShareAdvisory": 0.1,
+    "source": "Claude PR #3 review pullrequestreview-5903350016; monotonicity advisory is NOT safety/operational tolerance",
+    "b5WholeRunViolationShareThresholdExclusive": 0.05,
+    "b5ReviewRule": "CONDITIONAL_SERVED_BY_DRAIN_GE_SEQUENTIAL_AND_CONDITIONAL_TOTAL_DEP_DELAY_LE_SEQUENTIAL",
+    "b5WorstTraceCount": 3,
+    "b5SourceReview": "pullrequestreview-5903461437"
+  },
+  "departureDemandProfiles": {
+    "INSERTABLE_EVERY_SECOND_ARR": {
+      "status": "SYNTHETIC_SATURATED_OPPORTUNITIES",
+      "description": "Departure request after every second ARR; models insertable opportunities, not observed evening bank departures",
+      "opportunitiesPerTwoHours": "APPROX_ARRIVALS_DIVIDED_BY_TWO"
+    },
+    "OBSERVED_LIKE_3_PER_H_2_HEAVY": {
+      "status": "SYNTHETIC_OBSERVED_LIKE_REQUESTS",
+      "source": "Claude review 5903350016: roughly three departures per hour, two heavy",
+      "departuresPerHour": 3,
+      "heavyPerHour": 2,
+      "requestsPerTwoHours": 6,
+      "heavyRequestsPerTwoHours": 4,
+      "orderPerHour": [
+        "HEAVY_JET",
+        "HEAVY_JET",
+        "MEDIUM_JET"
+      ],
+      "note": "Synthetic fixed request count and type mix, NOT observed time stamps or certified aircraft schedule"
+    }
+  },
+  "maxIncrementalArrivalDelayMs": 90000,
+  "incrementalArrivalDelaySource": "SYNTHETIC_UNVALIDATED: candidate follower threshold minus no-departure follower threshold (not accumulated original-request delay)",
+  "departureReleaseRule": "FIFO_WAIT_NEXT_ARR_GAP_AND_INCREMENTAL_DELAY",
+  "observedLikeGate": {
+    "sourceReview": "pullrequestreview-5903461437",
+    "demandArrivalsPerHour": [
+      20,
+      21
+    ],
+    "arrivalMeanServedBandPerHour": [
+      19,
+      21
+    ],
+    "meanMeasuredDeparturesBandPerHour": [
+      2.5,
+      3.5
+    ],
+    "departuresRequestedPerHour": 3,
+    "heavyRequestsPerHour": 2,
+    "allRequestsServedByDrainRequired": true,
+    "measurementWindowAllThreeServedShare": "REPORT_ONLY_NOT_A_GATE",
+    "departureHorizon": "TWO_HOUR_REQUESTS_PLUS_DRAIN; RATES_ONE_HOUR_MEASUREMENT",
+    "reportMeanDepartureDelay": true,
+    "status": "PREDECLARED_AGGREGATE_CONSISTENCY_GATE_UNVALIDATED_MECHANICS"
+  }
+}
