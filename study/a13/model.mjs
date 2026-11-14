@@ -239,6 +239,41 @@ export function evaluateTakeoffIntervalGate(c=CONFIG,{seeds=c.replication.seeds,
   overall:result.early.gate.status==='PASS'&&result.late.gate.status==='PASS'?
    'PASS':'FAIL_OBSERVED_TAKEOFF_INTERVAL_GATE'};
 }
+export function calibrateReadyTimeGrid(base=CONFIG,{developmentSeeds=12}={}){
+ validateConfig(base);
+ const all={};
+ for(const wave of ['early','late']){
+  const combinations=[];
+  for(const singleFraction of [0,.12,.24,.36])
+   for(const tripleFraction of [0,.12,.24])
+    for(const withinClusterGapMs of [0,30000,60000,90000,120000])
+     for(const centerJitterFraction of [0,.10]){
+      if(singleFraction+tripleFraction>=1)continue;
+      const parameters={singleFraction,tripleFraction,withinClusterGapMs,centerJitterFraction};
+      const c={...base,readyTimeProcess:{...base.readyTimeProcess,[wave]:parameters}};
+      const r=evaluateTakeoffIntervalGate(c,{seeds:developmentSeeds});
+      const x=r[wave],loss=
+       Math.abs(x.residual.medianSeconds)/30+
+       Math.abs(x.residual.shareLE120PercentagePoints)/10+
+       .1*Math.abs(x.residual.p90Seconds)/180;
+      combinations.push({parameters,loss,
+       medianS:x.model.medianS,shareLE120:x.model.shareLE120,
+       p90S:x.model.p90S,n:x.model.intervals,
+       gate:x.gate.status,medianResidualS:x.residual.medianSeconds,
+       share120ResidualPP:x.residual.shareLE120PercentagePoints});
+     }
+  combinations.sort((a,b)=>a.loss-b.loss||
+   a.parameters.withinClusterGapMs-b.parameters.withinClusterGapMs||
+   a.parameters.singleFraction-b.parameters.singleFraction);
+  all[wave]={sourceStatus:'DEV_ONLY_FITTED_TO_SEP2026_TAKEOFF_INTERVALS',
+   searchedCandidates:combinations.length,developmentSeedCount:developmentSeeds,
+   best:combinations[0],topThree:combinations.slice(0,3),
+   observed:base.observed.takeoffIntervals[wave],
+   noSealedHoldout:true};
+ }
+ return {method:'DETERMINISTIC_GRID_MIN_ABS_MEDIAN_30S_PLUS_SHARE_120_10PP_PLUS_P90_SOFT',
+  seedPolicy:'SHARED_DEVELOPMENT_SEEDS_NOT_A_HOLDOUT',...all};
+}
 function chooseSwaps(m,c){
  // Disjoint adjacent swaps: TP followed by jet on SAME EXIT, only
  // when the *request-time* difference does not already exceed the
