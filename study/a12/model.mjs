@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {digest,byteCompare} from '../core.mjs';
 import {profileFor,timeToGoMs,distanceBeforeThresholdNM,minimumCommonFinalNM,wakeFloorNM,assignEffectiveTargets,selectType,APPROVED_TYPE_WEIGHTS} from '../a11/model.mjs';
 
-export const A12_VERSION='A1.2-queue-conditional-candidate-3';
+export const A12_VERSION='A1.2-replicated-queue-candidate-4';
 export const CONDITIONAL='LINEUP_BEHIND_LANDING';
 export const SEQUENTIAL='SEQUENTIAL_AFTER_RUNWAY_CLEAR';
 export const TIME='TIME';
@@ -40,6 +40,16 @@ export function validateConfig(c){
   JSON.stringify(c.arrivalDemandLevelsPerHour)==='[18,20,21,22]','fixed 18/20/21/22 ARR/h scenarios required');
  integer(c.arrivalDemandHours,'arrivalDemandHours',1);
  check(c.arrivalDemandHours===2,'two-hour demand horizon required');
+ const rep=c.replication;
+ check(rep&&Number.isSafeInteger(rep.seeds)&&rep.seeds>=50&&rep.seeds<=500&&
+  Number.isSafeInteger(rep.seedStart)&&Number.isSafeInteger(rep.seedStride)&&rep.seedStride>0&&
+  Number.isSafeInteger(rep.pairedMeanCiBootstrapReplicates)&&rep.pairedMeanCiBootstrapReplicates>=1000&&
+  Number.isSafeInteger(rep.pairedMeanCiSeed)&&rep.confidence===.95,
+  'at least 50 fixed paired seeds and bootstrap policy required');
+ check(c.departureDemandProfiles?.OBSERVED_LIKE_3_PER_H_2_HEAVY?.departuresPerHour===3&&
+  c.departureDemandProfiles.OBSERVED_LIKE_3_PER_H_2_HEAVY.heavyPerHour===2&&
+  JSON.stringify(c.departureDemandProfiles.OBSERVED_LIKE_3_PER_H_2_HEAVY.orderPerHour)===
+   '["HEAVY_JET","HEAVY_JET","MEDIUM_JET"]','observed-like 3 departures/hour with 2 heavy is required');
  check(c.environment?.lvp===false,'LVP excluded from A1.2');
  for(const name of ['MEDIUM_JET','HEAVY_JET','TURBOPROP']){
   const x=c.departureByCategory?.[name];
@@ -61,7 +71,7 @@ export function configForDemandLevel(base,arrivalsPerHour){
  return {...base,arrivalCount:arrivalsPerHour*base.arrivalDemandHours,
   arrivalRequestStepMs:Math.round(HR/arrivalsPerHour)};
 }
-export function makeManifest(c=DEFAULT_CONFIG){
+export function makeManifest(c=DEFAULT_CONFIG,departureProfile='INSERTABLE_EVERY_SECOND_ARR'){
  validateConfig(c);
  const next=xorshift(c.seed),arrivals=[],opportunities=[];
  for(let i=0;i<c.arrivalCount;i++){
@@ -71,7 +81,7 @@ export function makeManifest(c=DEFAULT_CONFIG){
   arrivals.push({id:'SYN-A'+String(i).padStart(3,'0'),kind:'ARR',wake:selected.wake,type:selected.type,
    runway:'24',headwindKt:0,requestMs:i*c.arrivalRequestStepMs+jitter,
    targetNormal:normal(next),componentQuantile:next(),captureQuantile:next()});
-  if(i>0&&i%c.departureEvery===0){
+  if(departureProfile==='INSERTABLE_EVERY_SECOND_ARR'&&i>0&&i%c.departureEvery===0){
    const category=c.departureCategories[(Math.floor(i/c.departureEvery)-1)%c.departureCategories.length];
    opportunities.push({id:'SYN-D'+String(i).padStart(3,'0'),kind:'DEP',category,
     type:category==='HEAVY_JET'?'B744':category==='TURBOPROP'?'DH8D':'B738',
@@ -79,6 +89,33 @@ export function makeManifest(c=DEFAULT_CONFIG){
     betweenLeaderId:arrivals[i-1].id,followerId:arrivals[i].id,
     requestMs:arrivals[i-1].requestMs+c.departureDemandDelayMs});
   }
+ }
+ check(['INSERTABLE_EVERY_SECOND_ARR','OBSERVED_LIKE_3_PER_H_2_HEAVY'].includes(departureProfile),
+  'unknown departure demand profile');
+ if(departureProfile==='OBSERVED_LIKE_3_PER_H_2_HEAVY'){
+  const profile=c.departureDemandProfiles.OBSERVED_LIKE_3_PER_H_2_HEAVY;
+  const n=profile.departuresPerHour*c.arrivalDemandHours;
+  for(let k=0;k<n;k++){
+   // Three non-overlapping opportunities in each synthetic demand hour,
+   // approximately at minute 10, 30 and 50, never reverse-fitted to ANA.
+   const desiredMs=Math.round(((k+.5)*HR)/profile.departuresPerHour);
+   let followerIndex=1;
+   for(let i=2;i<arrivals.length;i++)
+    if(Math.abs(arrivals[i].requestMs-desiredMs)<
+       Math.abs(arrivals[followerIndex].requestMs-desiredMs))followerIndex=i;
+   check(!opportunities.some(x=>x.followerId===arrivals[followerIndex].id),
+    'observed-like demand selection must be unique');
+   const cat=profile.orderPerHour[k%profile.departuresPerHour];
+   const leader=arrivals[followerIndex-1],follower=arrivals[followerIndex];
+   opportunities.push({id:'SYN-OD'+String(k).padStart(3,'0'),
+    kind:'DEP',category:cat,type:cat==='HEAVY_JET'?'B744':'B738',
+    wake:cat==='HEAVY_JET'?'H':'M',
+    betweenLeaderId:leader.id,followerId:follower.id,
+    requestMs:leader.requestMs+c.departureDemandDelayMs});
+  }
+  check(opportunities.length===6&&
+    opportunities.filter(x=>x.category==='HEAVY_JET').length===4,
+    'observed-like two-hour demand must have 6 requests, 4 heavy');
  }
  // Reuse the exact locked A1.1 assignment function, not a new approximate
  // mixture sampler. All draws are immutable manifest fields before any run.
@@ -94,6 +131,7 @@ export function makeManifest(c=DEFAULT_CONFIG){
    arrivalSpacingSource:A11_SPACING_PROVENANCE.distribution}));
  return {schema:12,synthetic:true,seed:c.seed,startUtc:'2026-01-01T00:00:00.000Z',
   arrivals:fixedArrivals,opportunities,source:'SYNTHETIC_ONLY_FIXED_MANIFEST',version:A12_VERSION,
+  departureDemandProfile:departureProfile,
   a11LockSha256:A11_SPACING_PROVENANCE.lockSha256,
   a11ParametersSha256:assigned.distributionParametersSha256,
   a11FleetWeightsSha256:digest(APPROVED_TYPE_WEIGHTS)};
@@ -326,6 +364,7 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
  const rate=HR/(c.measurementEndMs-c.measurementStartMs);
  const slack=opportunities.filter(x=>x.status==='served').map(x=>x.actualSlackMs/1000);
  const arrDelay=servedArr.map(x=>x.delayMs/1000),depDelay=servedDep.map(x=>x.delayMs/1000);
+ const mean=x=>x.length?x.reduce((a,b)=>a+b,0)/x.length:null;
  const binding={};
  for(const x of opportunities)for(const k of x.bindingReasons)binding[k]=(binding[k]||0)+1;
  const metrics={arrivalRatePerHour:nArr*rate,departureRatePerHour:nDep*rate,runwayMovementsPerHour:(nArr+nDep)*rate,
@@ -333,7 +372,7 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   usedDepartureOpportunities:servedDep.length,missedDepartureOpportunities:departures.filter(x=>x.missedOpportunity).length,
   slackSeconds:{p10:quant(slack,.1),median:quant(slack,.5),p90:quant(slack,.9),
    negativeShare:slack.length?slack.filter(x=>x<0).length/slack.length:null},
-  arrivalDelaySeconds:{median:quant(arrDelay,.5),p90:quant(arrDelay,.9)},
+  arrivalDelaySeconds:{mean:mean(arrDelay),median:quant(arrDelay,.5),p90:quant(arrDelay,.9)},
   departureDelaySeconds:{median:quant(depDelay,.5),p90:quant(depDelay,.9)},
   bindingReasons:binding,
   queueConditions:{queued:arrivals.filter(x=>x.queueConditional===true).length,
@@ -343,6 +382,7 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   capacityEligible:false,capacityLabel:'MECHANICS_ONLY_UNVALIDATED_NOT_TECHNICAL_CAPACITY'};
  return {meta:{modelVersion:A12_VERSION,sequence,policy,manifestSha256:digest(manifest),
   configSha256:digest(c),preset:c.preset,observation:'HYPOTHETICAL_MECHANICS',source:'SYNTHETIC_ONLY',
+  departureDemandProfile:manifest.departureDemandProfile??'INSERTABLE_EVERY_SECOND_ARR',
   a11LockReadOnly:true,a11Spacing:A11_SPACING_PROVENANCE,
   arrivalTargetApplication:'QUEUE_CONDITIONAL_CORE_IF_REQUEST_BEFORE_EARLIEST_CORE_THRESHOLD_ELSE_FULL_MIXTURE',
   queueConditionalSource:'CLAUDE_REVIEW_5903308924_MODERATE_CONFIDENCE',
@@ -440,4 +480,139 @@ export function compareDemandLevels(base=DEFAULT_CONFIG){
   overallObservedValidityStatus:levels.filter(l=>l.observedValidityGate.status!=='NOT_APPLICABLE')
    .every(l=>l.observedValidityGate.status==='PASS')?'PASS':'FAIL_OBSERVED_VALIDITY_GATE',
   sourceStatus:'MECHANICS_ONLY_UNVALIDATED_NOT_CAPACITY'};
+}
+
+const MEASURES=[
+ ['arrivalsPerHour',s=>s.metrics.arrivalRatePerHour],
+ ['departuresPerHour',s=>s.metrics.departureRatePerHour],
+ ['missedDepartureOpportunities',s=>s.metrics.missedDepartureOpportunities],
+ ['meanArrivalDelaySeconds',s=>s.metrics.arrivalDelaySeconds.mean]
+];
+function describe(xs){
+ const finite=xs.filter(Number.isFinite);
+ return {n:finite.length,mean:finite.length?finite.reduce((a,b)=>a+b,0)/finite.length:null,
+  p10:quant(finite,.1),p90:quant(finite,.9)};
+}
+function bootstrapMeanInterval(paired,config,levelSeed,profileId,sequenceId,metricId){
+ const b=config.replication.pairedMeanCiBootstrapReplicates;
+ const seed=(config.replication.pairedMeanCiSeed+
+   levelSeed*1009+profileId*131+sequenceId*31+metricId*17)>>>0;
+ const next=xorshift(seed), means=[];
+ for(let j=0;j<b;j++){
+  let sum=0;
+  for(let i=0;i<paired.length;i++)
+   sum+=paired[Math.floor(next()*paired.length)];
+  means.push(sum/paired.length);
+ }
+ return {level:.95,lower:quant(means,.025),upper:quant(means,.975),
+  method:'PAIRED_SEED_BOOTSTRAP_MEAN_PERCENTILE',replicates:b,seed};
+}
+function explainNonmonotonic(cond,seq,seed,policy){
+ const bc=new Map(cond.departures.map(d=>[d.id,d]));
+ const first=seq.departures.find(d=>{
+  const c=bc.get(d.id);
+  return c&&c.status!==d.status;
+ });
+ const d=first?bc.get(first.id):null;
+ return {seed,policy,
+  conditionalDeparturesInWindow:cond.metrics.measurementDepartures,
+  sequentialDeparturesInWindow:seq.metrics.measurementDepartures,
+  excessDeparturesInWindow:seq.metrics.measurementDepartures-cond.metrics.measurementDepartures,
+  conditionalAllServed:cond.metrics.usedDepartureOpportunities,
+  sequentialAllServed:seq.metrics.usedDepartureOpportunities,
+  conditionalArrivalsInWindow:cond.metrics.measurementArrivals,
+  sequentialArrivalsInWindow:seq.metrics.measurementArrivals,
+  earliestStatusDivergence:first?{
+   departureId:first.id,conditionalStatus:d?.status??null,sequentialStatus:first.status,
+   conditionalFollowerThresholdMs:d?.followerThresholdMs??null,
+   sequentialFollowerThresholdMs:first.followerThresholdMs??null,
+   conditionalDecisionReasons:d?.bindingReasons??[],
+   sequentialDecisionReasons:first.bindingReasons??[],
+   conditionalLeaderThresholdMs:d?.leaderThresholdMs??null,
+   sequentialLeaderThresholdMs:first.leaderThresholdMs??null}:null,
+  explanation:'GREEDY_QUEUE_PATH_DEPENDENCE_AND_MEASUREMENT_WINDOW_BOUNDARY; see per-seed earliest status divergence and queue trajectory. Not proof that sequential mechanics physically outperform conditional.',
+  needsIndependentTechnicalReview:true};
+}
+export function replicateComparison(base=DEFAULT_CONFIG){
+ validateConfig(base);
+ const result=[];
+ for(const [profileIndex,profile] of
+   ['INSERTABLE_EVERY_SECOND_ARR','OBSERVED_LIKE_3_PER_H_2_HEAVY'].entries()){
+  for(const arrivalsPerHour of base.arrivalDemandLevelsPerHour){
+   const rows=[],demandSeed=base.replication.seedStart;
+   for(let i=0;i<base.replication.seeds;i++){
+    const seed=demandSeed+i*base.replication.seedStride;
+    const cfg=configForDemandLevel({...base,seed},arrivalsPerHour);
+    const manifest=makeManifest(cfg,profile);
+    const four=pairedScenarios(manifest,cfg);
+    rows.push({seed,manifestSha256:four.manifestSha256,
+     scenarios:four.scenarios});
+   }
+   const summary=[];
+   for(const sequence of sequences){
+    const distance=rows.map(r=>r.scenarios.find(s=>s.meta.sequence===sequence&&s.meta.policy===DISTANCE));
+    const time=rows.map(r=>r.scenarios.find(s=>s.meta.sequence===sequence&&s.meta.policy===TIME));
+    for(const [policy,scenarios] of [[DISTANCE,distance],[TIME,time]]){
+     summary.push({sequence,policy,n:scenarios.length,
+      statistics:Object.fromEntries(MEASURES.map(([k,fn])=>
+       [k,describe(scenarios.map(fn))]))});
+    }
+   }
+   const pairedDifferences=[];
+   for(const [si,sequence] of sequences.entries()){
+    const dist=rows.map(r=>r.scenarios.find(s=>s.meta.sequence===sequence&&s.meta.policy===DISTANCE));
+    const time=rows.map(r=>r.scenarios.find(s=>s.meta.sequence===sequence&&s.meta.policy===TIME));
+    pairedDifferences.push({sequence,interpretation:'TIME_MINUS_DISTANCE_SAME_SEED_AND_MANIFEST',
+     differences:Object.fromEntries(MEASURES.map(([key,fn],mi)=>{
+      const values=dist.map((s,i)=>fn(time[i])-fn(s));
+      const summary=describe(values);
+      return [key,{...summary,pairedMeanCI95:bootstrapMeanInterval(values,base,arrivalsPerHour,profileIndex,si,mi)}];
+     }))});
+   }
+   const monotonicity=[];
+   for(const policy of policies){
+    const violations=[];
+    for(const r of rows){
+     const conditional=r.scenarios.find(x=>x.meta.sequence===CONDITIONAL&&x.meta.policy===policy);
+     const sequential=r.scenarios.find(x=>x.meta.sequence===SEQUENTIAL&&x.meta.policy===policy);
+     if(sequential.metrics.departureRatePerHour>conditional.metrics.departureRatePerHour)
+      violations.push(explainNonmonotonic(conditional,sequential,r.seed,policy));
+    }
+    const share=violations.length/rows.length;
+    monotonicity.push({policy,n:rows.length,violatingSeeds:violations.length,
+     shareSequentialHigher:share,violations,flag:share>base.replication.monotonicityMaxViolationShareAdvisory?
+      'ELEVATED_NONMONOTONICITY_REQUIRES_REVIEW':'LOW_NONMONOTONICITY',
+     sourceStatus:'GREEDY_SCHEDULER_DIAGNOSTIC_NOT_SAFETY_GATE'});
+   }
+   const observedGate=profile==='INSERTABLE_EVERY_SECOND_ARR'&&[20,21].includes(arrivalsPerHour)?
+    {status:'REPLICATED_OBSERVED_COMPARATOR',
+     conditionalDistanceMeanARRPerHour:summary[0].statistics.arrivalsPerHour.mean,
+     conditionalDistanceMeanDEPPerHour:summary[0].statistics.departuresPerHour.mean,
+     reference:'CLAUDE_SEPT2026_EVENING_PEAK_20_21_ARR_PER_H_3_DEP_PER_H_2_HEAVY',
+     observedBand:[19,21],minDeparturePerHour:2,
+     verdict:summary[0].statistics.arrivalsPerHour.mean>=19&&
+      summary[0].statistics.arrivalsPerHour.mean<=21&&
+      summary[0].statistics.departuresPerHour.mean>=2?'PASS':'FAIL_OBSERVED_VALIDITY_GATE'}:
+     {status:'NOT_APPLICABLE'};
+   result.push({profile,arrivalsPerHour,seedCount:rows.length,
+    seedStart:base.replication.seedStart,seedStride:base.replication.seedStride,
+    requestedArrivals:arrivalsPerHour*base.arrivalDemandHours,
+    requestedDepartureOpportunities:profile==='OBSERVED_LIKE_3_PER_H_2_HEAVY'?6:
+      Math.floor((arrivalsPerHour*base.arrivalDemandHours-1)/base.departureEvery),
+    profileDescription:base.departureDemandProfiles[profile].description??
+      base.departureDemandProfiles[profile].note,
+    referenceDataStatus:profile==='OBSERVED_LIKE_3_PER_H_2_HEAVY'?
+     'OBSERVED_LIKE_REQUEST_COUNT_AND_HEAVY_MIX_NOT_OBSERVED_TIMES':
+     'SYNTHETIC_INSERTABLE_OPPORTUNITIES_NOT_OBSERVED_DEMAND',
+    statistics:summary,pairedDifferences,monotonicity,observedGate,
+    perSeedManifestSha256:rows.map(r=>({seed:r.seed,sha256:r.manifestSha256}))});
+  }
+ }
+ return {schema:1,status:'A12_PRELIMINARY_REPLICATED_MECHANICS_UNVALIDATED',
+  seedCount:base.replication.seeds,demandProfiles:['INSERTABLE_EVERY_SECOND_ARR','OBSERVED_LIKE_3_PER_H_2_HEAVY'],
+  demandLevelsPerHour:base.arrivalDemandLevelsPerHour,
+  results:result,pairedBootstrap:base.replication,
+  a11LockSha256:APPROVED_A11_LOCK_SHA256,
+  assumptionStatus:'CONDITIONAL_ON_UNVALIDATED_GROUND_EVENT_DURATIONS',
+  warning:'Monotonicity violations are shown with seed-level divergence evidence; do not hide or force monotonicity. Insertable capacity is not observed throughput.'};
 }
