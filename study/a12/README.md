@@ -36,8 +36,15 @@ required ARR–ARR time is at least the time needed to deliver its locked
 equivalent track-miles target, and the existing surveillance/wake common-final
 floor. After a departure, queued arrivals **cannot recover time by closing up
 to the 3 NM surveillance floor** instead of the locked delivered spacing.
-No retuning or fresh calibration is performed. A1.1 remains a descriptive
-statistical arrival-spacing baseline, not observed vectoring geometry.
+No retuning or fresh calibration is performed. The synthetic fleet mix also
+reuses A1.1's **published pooled 4–2NM speed-sample frequency weights**
+(including a representative heavy type), not the original equally-weighted
+four-type first candidate. These frequency weights remain an imperfect
+proxy for actual busy-bank traffic composition. Each demand-level report
+records the share of frozen arrival targets raised by the synthetic hard
+minimum and ROT proxy; this is distinct from the original A1.1 calibration
+raise fraction of 1.06%. A1.1 remains a descriptive statistical
+arrival-spacing baseline, not observed vectoring geometry.
 
 Demand levels use **36, 40 and 44 ARR requests over two hours** respectively,
 equivalent to 18/20/22 ARR/hour, on separate seeded manifestations. The same
