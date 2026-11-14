@@ -87,7 +87,7 @@
       "holdout": "OBSERVED_AGGREGATE_HOLDOUT_REPORT_ONLY"
     }
   },
-  "syntheticDemandNote": "Four independent two-hour synthetic demand levels 18/20/21/22 ARR/hour; frozen A1.1 core and mixture targets on identical per-level paired manifests. Observed peak gate 20-21 ARR/h and at least 2 departures/h. All results conditional on unvalidated ground-event durations.",
+  "syntheticDemandNote": "50 fixed seeds for each of 18/20/21/22 ARR demand, paired conditional/sequential × distance/time; two separate departure demand profiles: insertable every-second-ARR opportunities, and observed-like 3 DEP/h including 2 heavy. All ground-event durations unvalidated.",
   "arrivalDemandLevelsPerHour": [
     18,
     20,
@@ -119,5 +119,37 @@
     "warmupHours": 1,
     "referenceApproxRatePerHour": 22,
     "source": "Claude review 5903308924; diagnostic only, not fitted to exact 22"
+  },
+  "replication": {
+    "seeds": 50,
+    "seedStart": 20261114,
+    "seedStride": 1,
+    "pairedMeanCiBootstrapReplicates": 2000,
+    "pairedMeanCiSeed": 20261217,
+    "quantiles": "TYPE7",
+    "confidence": 0.95,
+    "monotonicityMaxViolationShareAdvisory": 0.1,
+    "source": "Claude PR #3 review pullrequestreview-5903350016; monotonicity advisory is NOT safety/operational tolerance"
+  },
+  "departureDemandProfiles": {
+    "INSERTABLE_EVERY_SECOND_ARR": {
+      "status": "SYNTHETIC_SATURATED_OPPORTUNITIES",
+      "description": "Departure request after every second ARR; models insertable opportunities, not observed evening bank departures",
+      "opportunitiesPerTwoHours": "APPROX_ARRIVALS_DIVIDED_BY_TWO"
+    },
+    "OBSERVED_LIKE_3_PER_H_2_HEAVY": {
+      "status": "SYNTHETIC_OBSERVED_LIKE_REQUESTS",
+      "source": "Claude review 5903350016: roughly three departures per hour, two heavy",
+      "departuresPerHour": 3,
+      "heavyPerHour": 2,
+      "requestsPerTwoHours": 6,
+      "heavyRequestsPerTwoHours": 4,
+      "orderPerHour": [
+        "HEAVY_JET",
+        "HEAVY_JET",
+        "MEDIUM_JET"
+      ],
+      "note": "Synthetic fixed request count and type mix, NOT observed time stamps or certified aircraft schedule"
+    }
   }
 }
