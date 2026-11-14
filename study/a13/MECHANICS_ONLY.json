@@ -1,0 +1,173 @@
+{
+  "schema": 1,
+  "preset": "A13_MECHANICS_ONLY_UNVALIDATED",
+  "nonOperational": true,
+  "sourceComments": [
+    6867161126,
+    6867307513,
+    6867633651,
+    6877178756,
+    6877190634,
+    6877231875
+  ],
+  "mainBaseSha": "3deafff1f20d1f2218f38c07cec53e43a0dd88ab",
+  "observed": {
+    "departurePeaks": "SEP2026_30_DAYS",
+    "departurePeakMeanPerHour": 15.8,
+    "departurePeakMaxPerHour": 20,
+    "sameExitWithin180S": {
+      "nPairs": 52,
+      "airborneFollowerDistanceMedianNM": 5.6,
+      "airborneFollowerDistanceP10NM": 4.5,
+      "radial30FollowerDistanceMedianNM": 15.6,
+      "radial30FollowerDistanceP10NM": 10.1,
+      "radial40FollowerDistanceMedianNM": 18.1,
+      "radial40FollowerDistanceMinNM": 7.3
+    },
+    "exitSharesPercent": {
+      "GTQ": 37,
+      "ASMOX": 21,
+      "RAPOR": 18,
+      "DYOUT": 17,
+      "DIK": 5,
+      "OTHER_UNKNOWN": 2
+    },
+    "gate40TimeGapChangeMedianSeconds": {
+      "TP-J": -120,
+      "J-TP": 119,
+      "J-J": 4
+    },
+    "sameExitApproxAirborneGapS": 120,
+    "backgroundArrivalReference": {
+      "earlyHour": 1,
+      "lateHour": 7,
+      "sourceComment": 6877231875,
+      "early03xx": {
+        "days": 12,
+        "departuresMean": 16.3,
+        "arrivalsMean": 0.9
+      },
+      "early04xx": {
+        "days": 6,
+        "departuresMean": 14.2,
+        "arrivalsMean": 0.7
+      },
+      "morning08xx": {
+        "days": 9,
+        "departuresMean": 16.6,
+        "arrivalsMean": 6.7
+      },
+      "afternoon16xx": {
+        "days": 3,
+        "departuresMean": 14.3,
+        "arrivalsMean": 7
+      }
+    }
+  },
+  "fittedSpeedContrast": {
+    "jetAnchorKt": 300,
+    "jetAnchorStatus": "HYPOTHETICAL_NOT_IDENTIFIED_FROM_GAP_CHANGE",
+    "targetTPJetChangeSeconds": -120,
+    "targetJetTPChangeSeconds": 119,
+    "targetJetJetChangeSeconds": 4,
+    "fitRule": "LEAST_SQUARES_TO_TWO_ANTISYMMETRIC_TYPE_CONTRASTS; J-J_FIXED_ZERO",
+    "sourceStatus": "FITTED_TO_SEP2026_DEV_CHANGE_MEDIANS_CONDITIONAL_ON_300KT_JET_ANCHOR",
+    "noClaimOfTwoIndependentlyIdentifiedSpeeds": true
+  },
+  "demand": {
+    "departureLevelsPerHour": [
+      14,
+      16,
+      18,
+      20
+    ],
+    "backgroundArrivalsPerHour": [
+      1,
+      7
+    ],
+    "durationHours": 2,
+    "measurementStartMs": 1800000,
+    "measurementEndMs": 5400000,
+    "drainEndMs": 9000000,
+    "departureJitterFraction": 0.4,
+    "arrivalJitterFraction": 0.08
+  },
+  "fleet": {
+    "turbopropShare": 0.23,
+    "heavyJetShareWithinJets": 0.12,
+    "provenance": "SYNTHETIC_UNVALIDATED: no observed September departure type mix supplied"
+  },
+  "categories": {
+    "JET": {
+      "lineupMs": 50000,
+      "rollMs": 55000,
+      "runwayClearAfterAirborneMs": 10000
+    },
+    "TURBOPROP": {
+      "lineupMs": 45000,
+      "rollMs": 45000,
+      "runwayClearAfterAirborneMs": 10000
+    },
+    "HEAVY_JET": {
+      "lineupMs": 50000,
+      "rollMs": 70000,
+      "runwayClearAfterAirborneMs": 10000
+    }
+  },
+  "arrivals": {
+    "runwayOccupancyMs": 75000,
+    "source": "A1.2_SYNTHETIC_UNVALIDATED_ROT; ARR_TIMINGS_NOT_OBSERVED_REQUESTS"
+  },
+  "reorder": {
+    "maxPositions": 1,
+    "maxAdditionalDelayMs": 120000,
+    "status": "UNVALIDATED_SENSITIVITY; CTOT_ATFM_SLOTS_NOT_MODELLED"
+  },
+  "intervalPresets": {
+    "CURRENT": {
+      "extraSameExitMs": 0,
+      "extraDifferentExitMs": 0,
+      "source": "CURRENT_NO_ADDED_INTERVAL; EXISTING_HARD_PROTECTIONS_PRESERVED"
+    },
+    "SEP2026_OBSERVED_SAME_EXIT_120S": {
+      "extraSameExitMs": 120000,
+      "extraDifferentExitMs": 0,
+      "source": "SENSITIVITY_ONLY_OBSERVED_APPROX_120S_NOT_OPERATIONAL_MINIMUM"
+    }
+  },
+  "gate": {
+    "definitions": [
+      {
+        "id": "RADIAL_30_NM",
+        "distanceNM": 30
+      },
+      {
+        "id": "RADIAL_40_NM",
+        "distanceNM": 40
+      }
+    ],
+    "geometryStatus": "HYPOTHETICAL_STRAIGHT_RADIAL_EQUIVALENT_NOT_ACTUAL_TMA_OR_EXIT_FIX",
+    "missingCrossingProbability": 0.02,
+    "missingnessStatus": "SYNTHETIC_INJECTED_NOT_OBSERVED",
+    "differentExitSpacingStatus": "NO_SPACING_CLAIM",
+    "exitFixCoordinates": null
+  },
+  "replication": {
+    "seeds": 50,
+    "seedStart": 20261114,
+    "seedStride": 1,
+    "pairedBootstrapReplicates": 1000,
+    "bootstrapSeed": 20261120,
+    "confidence": 0.95
+  },
+  "boundaries": {
+    "wakeAndSurveillance": "READ_ONLY_PREEXISTING_PROTECTIONS_NOT_REPLACED",
+    "runwayClear": "SERIAL_RUNWAY_OCCUPANCY",
+    "lvp": false,
+    "ctotAtfm": "NOT_MODELLED"
+  },
+  "output": {
+    "status": "MECHANICS_ONLY_UNVALIDATED",
+    "noOperationalCapacityClaim": true
+  }
+}
