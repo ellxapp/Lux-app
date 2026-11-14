@@ -5,7 +5,7 @@ import {canonical,digest} from '../core.mjs';
 import {DEFAULT_CONFIG,validateConfig,makeManifest,validateManifest,timeline,
  feasibility,simulate,pairedScenarios,minArrivalThresholdGapMs,
  CONDITIONAL,SEQUENTIAL,DISTANCE,TIME,APPROVED_A11_LOCK_SHA256,A11_SPACING_PROVENANCE,
- configForDemandLevel,compareDemandLevels} from './model.mjs';
+ configForDemandLevel,compareDemandLevels,observedValidityGate,coreOnlySaturationDiagnostic} from './model.mjs';
 import {profileFor,timeToGoMs,assignEffectiveTargets,APPROVED_TYPE_WEIGHTS} from '../a11/model.mjs';
 const clone=x=>structuredClone(x);
 const simpleArr=(id,requestMs,type='B738',wake='M',headwindKt=0)=>
@@ -17,8 +17,12 @@ const lock=JSON.parse(readFileSync(new URL('../a11/calibration-lock.json',import
 const synthetic=(arrivals,departures=[])=>{
  const input=arrivals.map(a=>({...a,targetNormal:0,componentQuantile:1,captureQuantile:.5}));
  const assigned=assignEffectiveTargets({schema:11,synthetic:true,flights:[input]},lock.parameters);
+ const core=assignEffectiveTargets({schema:11,synthetic:true,
+  flights:[input.map(a=>({...a,componentQuantile:1}))]},lock.parameters);
  return {schema:12,synthetic:true,seed:DEFAULT_CONFIG.seed,
- startUtc:'2026-01-01T00:00:00.000Z',arrivals:assigned.flights[0].map(a=>({...a,
+ startUtc:'2026-01-01T00:00:00.000Z',arrivals:assigned.flights[0].map((a,i)=>({...a,
+  coreTargetM:core.flights[0][i].effectiveTargetM,
+  coreTargetSource:'A11_LOCKED_CORE_SAME_NORMAL',
   arrivalSpacingSource:A11_SPACING_PROVENANCE.distribution})),opportunities:departures,
  a11LockSha256:APPROVED_A11_LOCK_SHA256,a11ParametersSha256:digest(lock.parameters),
  a11FleetWeightsSha256:digest(APPROVED_TYPE_WEIGHTS)};
@@ -135,10 +139,10 @@ test('B1: immutable per-flight normals/component quantiles are required and no r
   assert.equal(x.meta.a11Spacing.lockSha256,APPROVED_A11_LOCK_SHA256);
  }finally{Math.random=orig;}
 });
-test('B1: 18/20/22 per hour demands are paired independently and reported at all four policies',()=>{
+test('B2: 18/20/21/22 per hour demands are paired independently and reported at all four policies',()=>{
  const comparison=compareDemandLevels(DEFAULT_CONFIG);
- assert.deepEqual(comparison.levels.map(x=>x.arrivalsPerHour),[18,20,22]);
- assert.deepEqual(comparison.levels.map(x=>x.requestedArrivals),[36,40,44]);
+ assert.deepEqual(comparison.levels.map(x=>x.arrivalsPerHour),[18,20,21,22]);
+ assert.deepEqual(comparison.levels.map(x=>x.requestedArrivals),[36,40,42,44]);
  for(const level of comparison.levels){
   assert.equal(level.scenarios.length,4);
   assert.equal(new Set(level.scenarios.map(s=>s.meta.manifestSha256)).size,1);
@@ -148,6 +152,57 @@ test('B1: 18/20/22 per hour demands are paired independently and reported at all
   assert.ok(level.lockedArrivalFloorRaising.shareRaised>=0 &&
    level.lockedArrivalFloorRaising.shareRaised<=1);
  }
+});
+test('B2: immutable core-only and full mixture targets share the same locked normal draw',()=>{
+ const cfg=configForDemandLevel(DEFAULT_CONFIG,20),manifest=makeManifest(cfg);
+ const frozen=canonical(manifest);
+ const different=manifest.arrivals.filter((a,i)=>i>0&&a.effectiveTargetComponent==='TAIL');
+ assert.ok(different.length>0,'fixture must contain a tail alternative');
+ assert.ok(different.some(a=>a.effectiveTargetM>a.coreTargetM*1.5));
+ const tampered=structuredClone(manifest);tampered.arrivals[1].coreTargetM+=100;
+ assert.throws(()=>validateManifest(tampered,cfg),/immutable A1.1 target differs/);
+ assert.equal(canonical(manifest),frozen);
+});
+test('B2: queued follower uses core regardless of preassigned tail; nonqueued follower keeps tail',()=>{
+ const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
+ const arrivals=[simpleArr('SYN-A',0),simpleArr('SYN-B',1000)];
+ const queued=synthetic(arrivals);queued.arrivals[1].componentQuantile=0;
+ const full=assignEffectiveTargets({schema:11,synthetic:true,flights:[queued.arrivals.map(a=>({...a,componentQuantile:a.id==='SYN-B'?0:1}))]},lock.parameters);
+ queued.arrivals[1].effectiveTargetM=full.flights[0][1].effectiveTargetM;
+ queued.arrivals[1].effectiveTargetComponent='TAIL';
+ const result=simulate(queued,c,{policy:TIME});
+ assert.equal(result.arrivals[1].queueConditional,true);
+ assert.equal(result.arrivals[1].lockedTargetComponent,'CORE');
+ assert.equal(result.arrivals[1].lockedTargetM,queued.arrivals[1].coreTargetM);
+ const late=structuredClone(queued);late.arrivals[1].requestMs=600000;
+ const r2=simulate(late,c,{policy:TIME});
+ assert.equal(r2.arrivals[1].queueConditional,false);
+ assert.equal(r2.arrivals[1].lockedTargetComponent,'TAIL');
+ assert.equal(r2.arrivals[1].lockedTargetM,late.arrivals[1].effectiveTargetM);
+});
+test('B2: queue decision is fixed by requested time before departure planning and never redraws',()=>{
+ const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
+ const a=simpleArr('SYN-A',0),b=simpleArr('SYN-B',1000);
+ const d=simpleDep('SYN-D','SYN-A','SYN-B');
+ const m=synthetic([a,b],[d]);
+ const x=simulate(m,c,{sequence:CONDITIONAL,policy:DISTANCE});
+ const y=simulate(m,c,{sequence:SEQUENTIAL,policy:TIME});
+ assert.equal(x.arrivals[1].queueConditional,y.arrivals[1].queueConditional);
+ assert.equal(x.arrivals[1].lockedTargetM,y.arrivals[1].lockedTargetM);
+ assert.equal(x.arrivals[1].lockedTargetComponent,'CORE');
+});
+test('B2: observed 20-21 gate is explicitly evaluated and nonmatching demand is not applicable',()=>{
+ const levels=compareDemandLevels(DEFAULT_CONFIG);
+ assert.equal(levels.levels.length,4);
+ assert.equal(levels.levels.find(l=>l.arrivalsPerHour===18).observedValidityGate.status,'NOT_APPLICABLE');
+ for(const rate of [20,21]){
+  const gate=levels.levels.find(l=>l.arrivalsPerHour===rate).observedValidityGate;
+  assert.notEqual(gate.status,'NOT_APPLICABLE');
+  assert.equal(gate.minAcceptedDeparturesPerHour,2);
+  assert.deepEqual(gate.observedArrivalBandPerHour,[19,21]);
+ }
+ assert.equal(levels.saturatedArrivalOnly.status,'SYNTHETIC_CORE_ONLY_SATURATED_DIAGNOSTIC_NOT_OBSERVED');
+ assert.ok(levels.saturatedArrivalOnly.arrivalsPerHour>0);
 });
 test('A12/E5: exact zero-slack threshold served and negative slack opportunity rejected',()=>{
  const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
