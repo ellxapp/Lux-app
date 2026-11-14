@@ -117,6 +117,17 @@ export function validateManifest(m,c){
   const index=m.arrivals.findIndex(a=>a.id===d.followerId);
   check(index>0&&m.arrivals[index-1].id===d.betweenLeaderId,'opportunity must reference adjacent arrivals');
  }
+ // The caller cannot supply a superficially valid but altered target. Reconstruct
+ // it from the frozen manifest quantiles and the exact A1.1 locked parameters.
+ const recomputed=assignEffectiveTargets({schema:11,synthetic:true,
+  flights:[m.arrivals]},lockedA11.parameters).flights[0];
+ for(let i=0;i<m.arrivals.length;i++){
+  const observed=m.arrivals[i],expected=recomputed[i];
+  check(observed.effectiveTargetM===expected.effectiveTargetM&&
+   observed.effectiveTargetComponent===expected.effectiveTargetComponent&&
+   observed.effectiveTargetSource===expected.effectiveTargetSource,
+   'immutable A1.1 target differs from locked normal/component quantiles');
+ }
  check(m.arrivals.every((a,i)=>i===0||a.requestMs>=m.arrivals[i-1].requestMs),'arrival demand ordering');
  check(m.opportunities.length===new Set(m.opportunities.map(x=>x.followerId)).size,'one departure opportunity per arrival pair in A1.2');
  return m;
