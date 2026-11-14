@@ -4,7 +4,7 @@ import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {resolve,dirname} from 'node:path';
 import {canonical,digest} from '../core.mjs';
-import {compareDemandLevels,validateConfig,A12_VERSION,A11_SPACING_PROVENANCE} from './model.mjs';
+import {compareDemandLevels,replicateComparison,validateConfig,A12_VERSION,A11_SPACING_PROVENANCE} from './model.mjs';
 const args=process.argv.slice(2);
 const opt=(flag,fallback)=>{const i=args.indexOf(flag);return i<0?fallback:args[i+1];};
 const git=(...xs)=>execFileSync('git',xs,{encoding:'utf8'}).trim();
@@ -15,6 +15,7 @@ const path=opt('--config','study/a12/MECHANICS_ONLY.json');
 if(path!=='study/a12/MECHANICS_ONLY.json')throw Error('Use only the published unvalidated scenario preset');
 const cfg=validateConfig(JSON.parse(readFileSync(path,'utf8')));
 const result=compareDemandLevels(cfg);
+const replicated=replicateComparison(cfg);
 const output=resolve(opt('--out','/tmp/a12-first-candidate.json'));
 if(output.includes('/study/')||output.endsWith('/calibration-lock.json'))throw Error('No writing candidate to repository');
 const report={schema:1,status:'A12_MECHANICS_ONLY_UNVALIDATED',commitSha:sha,dirty,nodeVersion:process.version,
@@ -23,6 +24,8 @@ const report={schema:1,status:'A12_MECHANICS_ONLY_UNVALIDATED',commitSha:sha,dir
  demandLevelsPerHour:cfg.arrivalDemandLevelsPerHour,
  overallObservedValidityStatus:result.overallObservedValidityStatus,
  saturatedArrivalOnly:result.saturatedArrivalOnly,
+ replicated,replicationSeedCount:replicated.seedCount,
+ resultCategory:'INSERTABLE_CAPACITY_OR_OBSERVED_LIKE_DEMAND_CONDITIONAL_NOT_OPERATIONAL',
  config:cfg,referenceStatuses:{development:'OBSERVED_AGGREGATE_DEV_NOT_FIT',
  holdout:'REPORT_ONLY_NOT_FIT'},summary:{
   levels:result.levels.map(level=>({
@@ -41,11 +44,20 @@ const report={schema:1,status:'A12_MECHANICS_ONLY_UNVALIDATED',commitSha:sha,dir
  'Observational intP10 is a minimum feasibility screen, not a measured procedure minimum',
  'Holdout data are report-only and never used to fit timings',
  'No A1.1 model, lock, or statistical tolerance is modified',
- 'Scenario outcomes and deltas are conditional on unvalidated ground-event durations and arrival deferral assumptions']};
+ 'Scenario outcomes and deltas are conditional on unvalidated ground-event durations and arrival deferral assumptions',
+ 'B3: 50 seed paired results and 95% bootstrap intervals are preliminary descriptive outputs; do not substitute single-seed results for replicated conclusions',
+ 'N2: insertable opportunities every second arrival are not the observed evening departure demand. Separate observed-like demand has 3 requests per hour, 2 heavy, without observed timestamps']};
 mkdirSync(dirname(output),{recursive:true});
 const serial=canonical(report);
 writeFileSync(output,serial,'utf8');
-console.log(canonical({output,commitSha:sha,status:report.status,
+const shortRep=replicated.results.map(x=>({profile:x.profile,demand:x.arrivalsPerHour,
+ n:x.seedCount,observedGate:x.observedGate,statistics:x.statistics,
+ pairedDifferences:x.pairedDifferences,monotonicity:x.monotonicity.map(m=>({
+  policy:m.policy,violatingSeeds:m.violatingSeeds,shareSequentialHigher:m.shareSequentialHigher,flag:m.flag,
+  violatingSeedIds:m.violations.map(v=>v.seed)}))}));
+console.log(canonical({replicationSeedCount:replicated.seedCount,
+ replicationSummary:shortRep,resultCategory:report.resultCategory,
+ output,commitSha:sha,status:report.status,
  candidateSha256:digest(serial),a11LockSha256:A11_SPACING_PROVENANCE.lockSha256,
  overallObservedValidityStatus:report.overallObservedValidityStatus,
  saturatedArrivalOnly:report.saturatedArrivalOnly,
