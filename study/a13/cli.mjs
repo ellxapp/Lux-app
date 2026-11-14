@@ -4,7 +4,7 @@ import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {dirname,resolve} from 'node:path';
 import {canonical,digest} from '../core.mjs';
-import {CONFIG,validateConfig,replicate,fittedSpeedContrast,A11_LOCK_SHA256} from './model.mjs';
+import {CONFIG,validateConfig,replicate,fittedSpeedContrast,evaluateTakeoffIntervalGate,A11_LOCK_SHA256} from './model.mjs';
 const args=process.argv.slice(2),index=args.indexOf('--out');
 const out=resolve(index<0?'/tmp/a13-first-candidate.json':args[index+1]);
 if(out.includes('/study/')||out.endsWith('/calibration-lock.json'))throw Error('No writes to study repository or lock');
@@ -14,13 +14,31 @@ const sha=git('rev-parse','HEAD');
 if(git('status','--porcelain')&&!args.includes('--allow-dirty'))throw Error('Clean checkout required');
 const config=validateConfig(JSON.parse(readFileSync(new URL('./MECHANICS_ONLY.json',import.meta.url),'utf8')));
 const comparison=replicate(config);
+const readyIntervalGate=evaluateTakeoffIntervalGate(config,{seeds:config.replication.seeds});
+const anchorSensitivity=[260,340].map(jetAnchorKt=>{
+ const comparison=replicate(config,{jetAnchorKt});
+ return {jetAnchorKt,fit:comparison.fit,
+  cases:comparison.cases.map(x=>({
+   backgroundARRPerHour:x.backgroundArrivalsPerHour,
+   requestedDEPPerHour:x.departureDemandPerHour,preset:x.preset,
+   fifoDepH:x.fifo.departuresInHour.mean,candidateDepH:x.candidate.departuresInHour.mean,
+   pairedDeltaDepH:x.pairedCandidateMinusFIFO.departuresInHour,
+   meanGate40S:x.gateSummaries.candidate.gate40GapS.mean,
+   medianGate40S:x.gateSummaries.candidate.gate40GapS.median,
+   negativeGatePairs:x.candidate.sameExitNegativeGateGapCount.mean,
+   swapAudit:x.swapAudit,
+   pairedGate40GapCandidateMinusFIFO:x.pairedGate40GapCandidateMinusFIFO
+  }))};
+});
 const report={schema:1,source:'SYNTHETIC_ONLY',status:'MECHANICS_ONLY_UNVALIDATED',
  commitSha:sha,configSha256:digest(config),mainBaseSha:config.mainBaseSha,
  a11LockSha256:A11_LOCK_SHA256,approvalScope:'A1_A2_A3_AND_120S_SENSITIVITY_ONLY',
  speedFit:fittedSpeedContrast(config),
+ readyIntervalGate,jetAnchorSensitivity:anchorSensitivity,
  output:comparison,
  warnings:['No operational separation minima or ATC clearance rules are introduced',
  'GTQ 37% and other observed exit shares are descriptive, with unassigned 2% explicit',
+ 'Ready process is fitted to development take-off interval aggregates (whole-minute recorded times), not a held-out ready-time observation',
  'Only speed contrast is fit; 300kt jet anchor is hypothetical and unidentifiable from gate-gap changes',
  'Observed ~120s same-exit take-off spacing is a sensitivity preset only, CURRENT adds zero interval',
  '30/40 NM first outward radial crossings are synthetic gate-time proxies, not actual exit fixes',
@@ -46,8 +64,12 @@ const summary=comparison.cases.map(x=>({
  observedGTQSharePercent:x.exitMixAudit.observedPercent.GTQ,
  realisedGTQSharePercent:x.exitMixAudit.syntheticPercent.GTQ,
  syntheticTPSharePercent:x.typeMixAudit.syntheticTPSharePercent,
+ swapAudit:x.swapAudit,
+ pairedGate40GapCandidateMinusFIFO:x.pairedGate40GapCandidateMinusFIFO,
  anySwap:x.acceptance.anySwap,allConserved:x.acceptance.allConserved}));
 console.log(canonical({commitSha:sha,candidateSha256:digest(payload),
  a11LockSha256:A11_LOCK_SHA256,mainBaseSha:config.mainBaseSha,
- speedFit:report.speedFit,scenarioCount:comparison.cases.length,
+ speedFit:report.speedFit,readyIntervalGate,anchorSensitivity:anchorSensitivity.map(x=>({
+  jetAnchorKt:x.jetAnchorKt,fit:x.fit,cases:x.cases})),
+ scenarioCount:comparison.cases.length,
  seedCount:comparison.seedCount,summary,outputPath:out}));
