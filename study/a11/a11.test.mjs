@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureProbability,captureDistance,isBusyArrival,classifyRegime,typeFamily,quantileType7,
   observeDay,stats,hardMetrics,CAPTURE_DIGEST,stratumPairs} from './observation.mjs';
-import {profileFor,timeToGoMs,makeScenarioManifest,wakeFloorNM,materialize,evaluateSynthetic,
+import {profileFor,timeToGoMs,makeScenarioManifest,wakeFloorNM,materialize,assignEffectiveTargets,runAssignedManifest,minimumCommonFinalNM,evaluateSynthetic,
   scoreModel,fitDevelopment} from './model.mjs';
 import {validateHoldout} from './validate.mjs';
 import {canonical,digest} from '../core.mjs';
@@ -116,4 +116,29 @@ test('holdout evaluation refuses non-approved lock and no missing-day substituti
  const holdout={status:'OBSERVED_AGGREGATE_HOLDOUT',days:benchmark.days.holdout.slice(1),strata:[]};
  const approved={...lock,status:'APPROVED_LOCK',sourceStatus:'OBSERVED_AGGREGATE_DEV',benchmarkSha256:digest(benchmark)};
  assert.throws(()=>validateHoldout({lock:approved,development:benchmark,holdout,lockCommitSha:SHA}),/holdout days/);
+});
+
+test('generator writes immutable requested target; physical runner uses it without randomness',()=>{
+ const raw=makeScenarioManifest({seed:303,days:2,perDay:24});
+ const p={shift:1.8,sigma:.34,mu:[1.48,1.47,1.35]};
+ const assigned=assignEffectiveTargets(raw,p);
+ assert.ok(Number.isSafeInteger(assigned.flights[0][1].effectiveTargetM));
+ assert.equal(raw.flights[0][1].effectiveTargetM,undefined);
+ const before=canonical(assigned);
+ const a=runAssignedManifest(assigned);
+ assert.equal(canonical(a),canonical(runAssignedManifest(assigned)));
+ assert.equal(canonical(assigned),before);
+ assert.equal(a.days[0].arrivals[1].effectiveTargetM,assigned.flights[0][1].effectiveTargetM);
+ assert.throws(()=>runAssignedManifest(raw),/assigned synthetic/);
+});
+test('different type trajectories retain 3NM common-final floor',()=>{
+ const a=profileFor('DH8D'),b=profileFor('B738');
+ const interval=timeToGoMs(3*1852,b);
+ assert.ok(Number.isFinite(minimumCommonFinalNM(a,b,interval)));
+ const assigned=assignEffectiveTargets(makeScenarioManifest({seed:15,days:3,perDay:24}),
+  {shift:.1,sigma:.05,mu:[.1,.1,.1]});
+ const result=runAssignedManifest(assigned);
+ assert.ok(result.floorRaised>0);
+ for(const day of result.days)for(const arr of day.arrivals.slice(1))
+  assert.ok(arr.minimumCommonFinalNM>=3-1e-6);
 });
