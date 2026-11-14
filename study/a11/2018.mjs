@@ -50,3 +50,17 @@ export function run2018Illustration(config,{commitSha,seed=20261114,count=110,st
  return {status:'EUROCONTROL_2018_REFERENCE',source:EUROCONTROL_2018_REFERENCE,rows:output,
   noRetrospectiveTuning:true,sourceComment:EUROCONTROL_2018_REFERENCE.sourceComment};
 }
+
+// Non-calibration cross-check of an A1.1 fitted interval (not a technical capacity).
+export function fittedArrivalIntervalCrossCheck(intervalMedianS){
+ if(!(Number.isFinite(intervalMedianS)&&intervalMedianS>0))throw Error('invalid fitted interval');
+ const implied=3600/intervalMedianS;
+ return {status:'CROSS_CHECK_ONLY_NOT_CAPACITY',source:'FITTED_SYNTHETIC_DEV_INTERVAL',
+  fittedMedianIntervalSeconds:intervalMedianS,impliedSaturatedArrivalsPerHour:implied,
+  runways:['06','24'].map(runway=>({
+   runway,impliedSaturatedArrivalsPerHour:implied,
+   eurocontrolOptimalAA:EUROCONTROL_2018_REFERENCE.metrics.AA[runway].optimal,
+   arithmeticDifference:implied-EUROCONTROL_2018_REFERENCE.metrics.AA[runway].optimal,
+   comparable:false
+  })),warning:'Do not tune to 2018; this rate is the inverse of the fitted median, not a full simulation or observed ELLX capacity'};
+}
