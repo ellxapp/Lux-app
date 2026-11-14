@@ -426,3 +426,49 @@ test('B4: no release is vetoed merely by cumulative follower-request delay',()=>
  assert.ok(r.metrics.departureDelaySeconds.mean>0);
  assert.equal(r.metrics.pendingAtDrain,0);
 });
+
+test('B5: whole-run per-seed monotonicity checks both served-by-drain and total delay',()=>{
+ const result=replicateComparison(DEFAULT_CONFIG);
+ assert.equal(result.results.length,8);
+ for(const level of result.results){
+  assert.equal(level.wholeRunMonotonicity.length,2);
+  for(const audit of level.wholeRunMonotonicity){
+   assert.equal(audit.n,50);
+   assert.equal(audit.perSeed.length,50);
+   assert.equal(audit.shareViolating,audit.violatingSeeds/50);
+   assert.equal(audit.passBelowFivePercent,audit.shareViolating<.05);
+   assert.equal(audit.violations.length,audit.violatingSeeds);
+   assert.equal(audit.worstThreeSeedTraces.length,audit.shareViolating>=.05?Math.min(3,audit.violatingSeeds):0);
+   for(const pair of audit.perSeed){
+    assert.equal(pair.check.servedCount,pair.conditional.servedByDrain>=pair.sequential.servedByDrain);
+    assert.equal(pair.check.totalDelay,
+      pair.conditional.totalDepartureDelaySeconds<=pair.sequential.totalDepartureDelaySeconds);
+    assert.equal(pair.check.pass,pair.check.servedCount&&pair.check.totalDelay);
+   }
+   for(const trace of audit.worstThreeSeedTraces){
+    assert.equal(trace.check.pass,false);
+    assert.ok(trace.firstThreeDivergentDepartures.length>0 ||
+      trace.violationType==='HIGHER_TOTAL_DELAY');
+    assert.ok(trace.seed>=DEFAULT_CONFIG.replication.seedStart);
+   }
+  }
+ }
+ assert.equal(result.b5WholeRunOverallStatus,
+  result.results.every(l=>l.wholeRunMonotonicity.every(m=>m.passBelowFivePercent))?
+  'B5_ALL_CELLS_BELOW_5_PERCENT':'B5_REVIEW_REQUIRED');
+});
+test('B5: observed-like gate applies aggregate, not every-seed hourly count',()=>{
+ const result=replicateComparison(DEFAULT_CONFIG);
+ for(const rate of [20,21]){
+  const x=result.results.find(y=>y.profile==='OBSERVED_LIKE_3_PER_H_2_HEAVY'&&y.arrivalsPerHour===rate);
+  const gate=x.observedGate;
+  const distance=x.statistics.find(z=>z.sequence===CONDITIONAL&&z.policy===DISTANCE).statistics;
+  assert.equal(gate.status,'REPLICATED_OBSERVED_LIKE_FIFO_GATE');
+  assert.equal(gate.verdict,'PASS');
+  assert.deepEqual(gate.meanDepartureBandPerHour,[2.5,3.5]);
+  assert.equal(gate.allRequestedDeparturesServedShare,1);
+  assert.equal(gate.conditionalDistanceMeanDEPPerHour,distance.departuresPerHour.mean);
+  assert.ok(gate.measurementWindowAllThreeServedShareDiagnostic<1,
+   'boundary-crossing seeds must not invalidate an aggregate PASS');
+ }
+});
