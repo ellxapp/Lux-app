@@ -122,6 +122,9 @@ test('A12/E7: gates anchored to published September busy development intP10, hol
  assert.equal(s.status,'MECHANICS_NOT_SUPPORTED_BY_OBSERVED_P10');
  assert.equal(h.holdoutP10S,184.74);assert.equal(h.holdoutRole,'REPORT_ONLY_NOT_A_FIT_TARGET');
  assert.equal(h.referenceMedianS,260);
+ assert.ok(h.arrivalHardMinimumS<=h.modelMinimumS);
+ assert.ok(h.departurePhysicalMinimumS<=h.modelMinimumS);
+ assert.equal(h.assumedLeaderWake,'M');
 });
 test('A12/E8: scenario outcomes are descriptive, not validated technical capacity',()=>{
  const c=clone(DEFAULT_CONFIG);c.arrivalCount=24;
