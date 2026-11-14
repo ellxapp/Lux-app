@@ -1,16 +1,33 @@
 // Stage A1.2: non-operational, paired ARR–DEP–ARR opportunity mechanics.
 // Does not model tower clearances, runway geometry or certified separation.
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {digest,byteCompare} from '../core.mjs';
-import {profileFor,timeToGoMs,distanceBeforeThresholdNM,minimumCommonFinalNM,wakeFloorNM} from '../a11/model.mjs';
+import {profileFor,timeToGoMs,distanceBeforeThresholdNM,minimumCommonFinalNM,wakeFloorNM,assignEffectiveTargets} from '../a11/model.mjs';
 
-export const A12_VERSION='A1.2-mechanics-candidate-1';
+export const A12_VERSION='A1.2-locked-arrival-spacing-candidate-2';
 export const CONDITIONAL='LINEUP_BEHIND_LANDING';
 export const SEQUENTIAL='SEQUENTIAL_AFTER_RUNWAY_CLEAR';
 export const TIME='TIME';
 export const DISTANCE='DISTANCE';
 export const DEFAULT_CONFIG=Object.freeze(JSON.parse(readFileSync(new URL('./MECHANICS_ONLY.json',import.meta.url),'utf8')));
 const NM=1852, HR=3600000;
+export const APPROVED_A11_LOCK_SHA256='be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb';
+const lockBytes=readFileSync(new URL('../a11/calibration-lock.json',import.meta.url));
+const lockSha256=createHash('sha256').update(lockBytes).digest('hex');
+if(lockSha256!==APPROVED_A11_LOCK_SHA256)throw Error('A1.1 approved locked spacing file has changed');
+const lockedA11=Object.freeze(JSON.parse(lockBytes.toString('utf8')));
+if(lockedA11.freeParameterCount!==8||lockedA11.modelVersion!=='A1.1-two-component-2'||
+   lockedA11.status!=='CANDIDATE_NOT_APPROVED'||
+   lockedA11.parameterFamily!=='SHARED_TWO_COMPONENT_SHIFTED_LOGNORMAL')
+ throw Error('Unexpected A1.1 locked delivery distribution');
+export const A11_SPACING_PROVENANCE=Object.freeze({
+ lockSha256,sourceCommitSha:lockedA11.codeCommitSha,
+ modelVersion:lockedA11.modelVersion,
+ distribution:'LOCKED_EIGHT_PARAMETER_TWO_COMPONENT_EQUIVALENT_DISTANCE',
+ status:'A11_LOCKED_OBSERVED_AGGREGATE_VALIDATED_NOT_OPERATIONAL'
+});
+
 const sequences=[CONDITIONAL,SEQUENTIAL],policies=[DISTANCE,TIME];
 function check(ok,msg){if(!ok)throw Error(msg);}
 function integer(v,k,min=0){check(Number.isSafeInteger(v)&&v>=min,'invalid '+k);}
@@ -19,6 +36,10 @@ export function validateConfig(c){
  for(const k of ['arrivalROTMs','airborneToFollowerThresholdBufferMs','maxArrivalDeferralMs','runwayClearAfterDepAirborneMs','measurementStartMs','measurementEndMs','drainEndMs','stepMs','seed','arrivalCount','arrivalRequestStepMs','arrivalRequestJitterMs','departureEvery','departureDemandDelayMs'])integer(c[k],k);
  check(c.arrivalROTMs>0&&c.stepMs>0&&c.departureEvery>0&&c.arrivalCount>=2,'invalid positive timing or counts');
  check(c.measurementEndMs>c.measurementStartMs&&c.drainEndMs>=c.measurementEndMs,'invalid windows');
+ check(Array.isArray(c.arrivalDemandLevelsPerHour)&&
+  JSON.stringify(c.arrivalDemandLevelsPerHour)==='[18,20,22]','fixed 18/20/22 ARR/h scenarios required');
+ integer(c.arrivalDemandHours,'arrivalDemandHours',1);
+ check(c.arrivalDemandHours===2,'two-hour demand horizon required');
  check(c.environment?.lvp===false,'LVP excluded from A1.2');
  for(const name of ['MEDIUM_JET','HEAVY_JET','TURBOPROP']){
   const x=c.departureByCategory?.[name];
@@ -33,6 +54,13 @@ export function validateConfig(c){
  return c;
 }
 function xorshift(seed){let x=(seed>>>0)||0x9e3779b9;return ()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};}
+function normal(next){return Math.sqrt(-2*Math.log(Math.max(1e-12,next())))*Math.cos(2*Math.PI*next());}
+export function configForDemandLevel(base,arrivalsPerHour){
+ validateConfig(base);
+ check(base.arrivalDemandLevelsPerHour.includes(arrivalsPerHour),'unknown ARR demand level');
+ return {...base,arrivalCount:arrivalsPerHour*base.arrivalDemandHours,
+  arrivalRequestStepMs:Math.round(HR/arrivalsPerHour)};
+}
 export function makeManifest(c=DEFAULT_CONFIG){
  validateConfig(c);
  const next=xorshift(c.seed),arrivals=[],opportunities=[];
@@ -40,7 +68,8 @@ export function makeManifest(c=DEFAULT_CONFIG){
  for(let i=0;i<c.arrivalCount;i++){
   const selected=types[Math.floor(next()*types.length)],jitter=Math.floor(next()*c.arrivalRequestJitterMs);
   arrivals.push({id:'SYN-A'+String(i).padStart(3,'0'),kind:'ARR',wake:selected.wake,type:selected.type,
-   runway:i%2?'24':'24',headwindKt:0,requestMs:i*c.arrivalRequestStepMs+jitter});
+   runway:'24',headwindKt:0,requestMs:i*c.arrivalRequestStepMs+jitter,
+   targetNormal:normal(next),componentQuantile:next(),captureQuantile:next()});
   if(i>0&&i%c.departureEvery===0){
    const category=c.departureCategories[(Math.floor(i/c.departureEvery)-1)%c.departureCategories.length];
    opportunities.push({id:'SYN-D'+String(i).padStart(3,'0'),kind:'DEP',category,
@@ -50,11 +79,21 @@ export function makeManifest(c=DEFAULT_CONFIG){
     requestMs:arrivals[i-1].requestMs+c.departureDemandDelayMs});
   }
  }
+ // Reuse the exact locked A1.1 assignment function, not a new approximate
+ // mixture sampler. All draws are immutable manifest fields before any run.
+ const assigned=assignEffectiveTargets({schema:11,synthetic:true,flights:[arrivals]},lockedA11.parameters);
+ const fixedArrivals=assigned.flights[0].map(a=>({...a,
+   arrivalSpacingSource:A11_SPACING_PROVENANCE.distribution}));
  return {schema:12,synthetic:true,seed:c.seed,startUtc:'2026-01-01T00:00:00.000Z',
-  arrivals,opportunities,source:'SYNTHETIC_ONLY_FIXED_MANIFEST',version:A12_VERSION};
+  arrivals:fixedArrivals,opportunities,source:'SYNTHETIC_ONLY_FIXED_MANIFEST',version:A12_VERSION,
+  a11LockSha256:A11_SPACING_PROVENANCE.lockSha256,
+  a11ParametersSha256:assigned.distributionParametersSha256};
 }
 export function validateManifest(m,c){
  check(m?.synthetic===true&&m.schema===12&&m.seed===c.seed,'synthetic A1.2 manifest required');
+ check(m.a11LockSha256===APPROVED_A11_LOCK_SHA256&&
+   m.a11ParametersSha256===digest(lockedA11.parameters),
+   'manifest must be bound to exact A1.1 lock and parameters');
  check(Array.isArray(m.arrivals)&&Array.isArray(m.opportunities),'manifest flights required');
  const ids=new Set();
  for(const a of m.arrivals){
@@ -62,6 +101,14 @@ export function validateManifest(m,c){
   ids.add(a.id);integer(a.requestMs,'arrival request');
   check(['H','M','L'].includes(a.wake),'invalid wake');
   profileFor(a.type,a.headwindKt);
+  if(a.id===m.arrivals[0].id){
+   check(a.effectiveTargetM===null||a.effectiveTargetM===undefined,'first ARR cannot have a follower target');
+  }else{
+   check(Number.isSafeInteger(a.effectiveTargetM)&&a.effectiveTargetM>0 &&
+     a.effectiveTargetSource==='TARGET_AS_EQUIVALENT_TRACK_DISTANCE' &&
+     a.arrivalSpacingSource===A11_SPACING_PROVENANCE.distribution,
+     'immutable locked A1.1 target required for every arrival pair');
+  }
  }
  for(const d of m.opportunities){
   check(d.kind==='DEP'&&typeof d.id==='string'&&!ids.has(d.id),'invalid/duplicate departure');
@@ -165,7 +212,12 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
    continue;
   }
   const noDepFloor=prev?minArrivalThresholdGapMs(prev,f,c):0;
-  const noDepTime=prev?Math.max(f.requestMs,prev.timeMs+noDepFloor):f.requestMs;
+  // The delivered-spacing target is frozen per follower, independent of
+  // whether an intervening departure is attempted, accepted or missed.
+  // No post-departure catch-up at the 3NM surveillance minimum.
+  const lockedTargetMs=prev?timeToGoMs(f.effectiveTargetM,profileFor(f.type,f.headwindKt)):0;
+  const noDepRequiredMs=Math.max(noDepFloor,lockedTargetMs);
+  const noDepTime=prev?Math.max(f.requestMs,prev.timeMs+noDepRequiredMs):f.requestMs;
   const d=dByFollower.get(f.id);
   let selectedTime=noDepTime;
   if(d){
@@ -173,7 +225,7 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
    const profile=profileFor(f.type,f.headwindKt);
    const plannedDistanceMs=timeToGoMs(c.distancePlanningNM[d.category]*NM,profile);
    const planningMs=policy===DISTANCE?plannedDistanceMs:t.requiredGapMs;
-   const requiredMs=Math.max(t.requiredGapMs,planningMs,noDepFloor);
+   const requiredMs=Math.max(t.requiredGapMs,planningMs,noDepRequiredMs);
    const candidate=Math.max(f.requestMs,prev.timeMs+requiredMs);
    const delayFromDemandMs=candidate-f.requestMs;
    const canServe=candidate<=c.drainEndMs&&delayFromDemandMs<=c.maxArrivalDeferralMs;
@@ -182,7 +234,8 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
    selectedTime=canServe?candidate:noDepTime;
    const reasons=[];
    if(canServe){
-    for(const [name,ms] of [['ARRIVAL_HARD_MINIMA',noDepFloor],['DEPARTURE_PHYSICAL',t.requiredGapMs],
+    for(const [name,ms] of [['ARRIVAL_A11_LOCKED_DELIVERED_SPACING',noDepRequiredMs],
+      ['DEPARTURE_PHYSICAL',t.requiredGapMs],
       [policy==='DISTANCE'?'DISTANCE_PLANNING':'TIME_PLANNING',planningMs]]){
      if(Math.abs(requiredMs-ms)<=c.stepMs)reasons.push(name);
     }
@@ -215,6 +268,10 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   }
   const row={...f,status:'served',timeMs:selectedTime,delayMs:selectedTime-f.requestMs,
    arrivalClearMs:selectedTime+c.arrivalROTMs,bindingReasons:[],
+   lockedTargetM:f.effectiveTargetM??null,
+   lockedTargetComponent:f.effectiveTargetComponent??null,
+   lockedTargetGapMs:lockedTargetMs,
+   a11LockedSpacingBinding:!!prev&&selectedTime>=prev.timeMs+noDepRequiredMs,
    sourceStatus:'SYNTHETIC_UNVALIDATED'};
   arrivals.push(row);
   events.push({flightId:f.id,event:'arrival-threshold',timeMs:selectedTime});
@@ -241,7 +298,9 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   bindingReasons:binding,capacityEligible:false,capacityLabel:'MECHANICS_ONLY_UNVALIDATED_NOT_TECHNICAL_CAPACITY'};
  return {meta:{modelVersion:A12_VERSION,sequence,policy,manifestSha256:digest(manifest),
   configSha256:digest(c),preset:c.preset,observation:'HYPOTHETICAL_MECHANICS',source:'SYNTHETIC_ONLY',
-  a11LockReadOnly:true,units:{time:'integer-ms',distance:'NM'},
+  a11LockReadOnly:true,a11Spacing:A11_SPACING_PROVENANCE,
+  arrivalTargetApplication:'LOCKED_TARGET_PER_ADJACENT_ARR_PAIR_INCLUDING_DEP_OPPORTUNITIES',
+  units:{time:'integer-ms',distance:'NM'},
   measurement:{startMs:c.measurementStartMs,endMs:c.measurementEndMs,drainEndMs:c.drainEndMs}},
   totals,metrics,arrivals,departures,opportunities,events};
 }
@@ -253,4 +312,16 @@ export function pairedScenarios(manifest,c=DEFAULT_CONFIG){
   feasibility:[...sequences.flatMap(seq=>['MEDIUM_JET','HEAVY_JET','TURBOPROP'].map(cat=>
    feasibility(c,seq,cat,cat==='TURBOPROP'?'DH8D':'B738')))],
   references:c.reference,sourceStatus:'MECHANICS_ONLY_UNVALIDATED'};
+}
+export function compareDemandLevels(base=DEFAULT_CONFIG){
+ validateConfig(base);
+ const levels=base.arrivalDemandLevelsPerHour.map(arrivalsPerHour=>{
+  const config=configForDemandLevel(base,arrivalsPerHour);
+  const manifest=makeManifest(config),result=pairedScenarios(manifest,config);
+  return {arrivalsPerHour,manifestSha256:digest(manifest),
+   requestedArrivals:manifest.arrivals.length,requestedDepartureOpportunities:manifest.opportunities.length,
+   scenarios:result.scenarios,feasibility:result.feasibility};
+ });
+ return {levels,a11Spacing:A11_SPACING_PROVENANCE,
+  sourceStatus:'MECHANICS_ONLY_UNVALIDATED_NOT_CAPACITY'};
 }
