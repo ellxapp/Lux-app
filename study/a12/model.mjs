@@ -99,8 +99,8 @@ export function timeline(leadMs,depRequestMs,category,sequence,c=DEFAULT_CONFIG)
  const tLineupStart=sequence===CONDITIONAL?
   Math.max(leadMs,depRequestMs):Math.max(tClear,depRequestMs);
  const tLineupComplete=tLineupStart+p.departureLineupMs;
- const tRunwayEntry=tClear; // conditional positioning is not a runway-entry clearance
- const tRollStart=Math.max(tClear,tLineupComplete,depRequestMs);
+ const tRunwayEntry=Math.max(tClear,depRequestMs); // conditional positioning is not a runway-entry clearance
+ const tRollStart=Math.max(tRunwayEntry,tLineupComplete);
  const tAirborne=tRollStart+p.departureRollToAirborneMs;
  const tDepClear=tAirborne+c.runwayClearAfterDepAirborneMs;
  const tFollowerPhysicalMinimum=Math.max(tAirborne+c.airborneToFollowerThresholdBufferMs,tDepClear);
@@ -144,11 +144,15 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
  let stopped=false;
  for(let i=0;i<manifest.arrivals.length;i++){
   const f=manifest.arrivals[i],prev=arrivals.at(-1);
-  if(stopped||prev?.status!=='served'){
+  if(stopped||(prev&&prev.status!=='served')){
    stopped=true;
    arrivals.push({...f,status:'censored',reason:'drain-horizon',timeMs:null,delayMs:null});
    const dep=dByFollower.get(f.id);
-   if(dep)departures.push({...dep,status:'censored',reason:'arrival-drain-horizon'});
+   if(dep){
+    const missed={...dep,status:'censored',reason:'arrival-drain-horizon',missedOpportunity:true,
+     sequence,policy,bindingReasons:['DRAIN_HORIZON'],timeMs:null,delayMs:null};
+    departures.push(missed);opportunities.push(missed);
+   }
    continue;
   }
   const noDepFloor=prev?minArrivalThresholdGapMs(prev,f,c):0;
