@@ -17,8 +17,11 @@ jobs:
           node-version: '22'
       - run: node --version
       - run: node --test study/*.test.mjs
+      - run: node --test study/a11/*.test.mjs
       - name: Verify old app files are untouched
         run: git diff --exit-code ef8737e1deed33327788d1319da1c232bd7cb027 HEAD -- index.html relay-worker.js README.md .nojekyll
+      - name: A1.1 dev-only candidate (never committed)
+        run: node study/a11/fit-cli.mjs --candidate-out /tmp/a11-lock.candidate.json --days 110 --per-day 60 --rounds 8
       - name: Synthetic outputs
         run: |
           node study/cli.mjs --config study/presets/SYNTH.json --out /tmp/lux-stage-a --count 30
