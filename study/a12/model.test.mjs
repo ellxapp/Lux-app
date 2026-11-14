@@ -123,6 +123,10 @@ test('B1: immutable per-flight normals/component quantiles are required and no r
  assert.throws(()=>validateManifest(noTarget,c),/locked A1.1 target/);
  const badDigest=structuredClone(m);badDigest.a11LockSha256='0'.repeat(64);
  assert.throws(()=>validateManifest(badDigest,c),/A1.1 lock/);
+ const tampered=structuredClone(m);tampered.arrivals[1].effectiveTargetM+=1000;
+ assert.throws(()=>validateManifest(tampered,c),/immutable A1.1 target differs/);
+ const changedNormal=structuredClone(m);changedNormal.arrivals[1].targetNormal+=.3;
+ assert.throws(()=>validateManifest(changedNormal,c),/immutable A1.1 target differs/);
  const orig=Math.random;Math.random=()=>{throw Error('unexpected random during policy runner');};
  try {
   const x=simulate(m,c,{policy:TIME});
