@@ -43,11 +43,9 @@ export function stats(pairs){
 export function isBusyArrival(t,allArrivals,threshold=12){
  const from=t-3600000;
  const starts=[from+1000,...allArrivals.filter(x=>x>=from&&x<=t)];
- for(const start of starts){
-   let n=0;
-   for(const x of allArrivals)if(x>=start&&x<start+3600000)n++;
-   if(n>=threshold)return true;
- }
+ const sorted=[...allArrivals].sort((a,b)=>a-b);
+ const lower=x=>{let lo=0,hi=sorted.length;while(lo<hi){const mid=(lo+hi)>>1;if(sorted[mid]<x)lo=mid+1;else hi=mid;}return lo;};
+ for(const start of starts)if(lower(start+3600000)-lower(start)>=threshold)return true;
  return false;
 }
 export function classifyRegime(leaderMs,followerMs,departures){
@@ -80,7 +78,7 @@ export function stratumPairs(pairs,id){
  if(['J-J','J-TP','TP-J'].includes(id))return pairs.filter(p=>p.regime==='5NM'&&p.pair===id);
  if(id==='TP-TP_report')return pairs.filter(p=>p.regime==='5NM'&&p.pair==='TP-TP');
  if(id==='hw15_report')return pairs.filter(p=>p.regime==='hw15_report');
- if(id==='8NM_report'||id==='10NM_report')return pairs.filter(p=>p.regime===id.slice(0,4));
+ if(id==='8NM_report'||id==='10NM_report')return pairs.filter(p=>p.regime===id.replace('_report',''));
  return [];
 }
 export function hardMetrics(benchmark){
