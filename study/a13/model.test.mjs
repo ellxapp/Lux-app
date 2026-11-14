@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {digest} from '../core.mjs';
 import {CONFIG,VERSION,A11_LOCK_SHA256,validateConfig,fittedSpeedContrast,
  makeManifest,validateManifest,gateCrossings,simulate,comparePair,replicate,
- bunchedReadyTimes,evaluateTakeoffIntervalGate} from './model.mjs';
+ bunchedReadyTimes,evaluateTakeoffIntervalGate,intervalSample} from './model.mjs';
 
 const clone=x=>structuredClone(x);
 const fixture=(c=CONFIG,rate=16,bg=1,seed=20261114)=>makeManifest(c,
@@ -140,7 +140,7 @@ test('S10 exact A1.1 lock stays sealed and A1.3 nonoperational',()=>{
  const lock=readFileSync(new URL('../a11/calibration-lock.json',import.meta.url),'utf8');
  assert.equal(digest(lock),A11_LOCK_SHA256);
  assert.equal(CONFIG.nonOperational,true);
- assert.equal(VERSION,'A1.3-C1-bunched-ready-candidate-2');
+ assert.equal(VERSION,'A1.3-C2-minute-quantised-candidate-3');
 });
 
 test('A3: deliberate co-requested same-exit TP then jet can swap under 120s limit',()=>{
@@ -163,7 +163,7 @@ test('A3: deliberate co-requested same-exit TP then jet can swap under 120s limi
 
 test('C1: fixed 50-seed fitted early and late observed takeoff gates both PASS',()=>{
  const r=evaluateTakeoffIntervalGate(CONFIG,{seeds:50});
- assert.equal(r.label,'FITTED_TO_SEP2026_TAKEOFF_INTERVALS');
+ assert.equal(r.label,'FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT');
  assert.equal(r.overall,'PASS');
  for(const [wave,observedMedian,observedShare,background] of [
   ['early',120,.51,1],['late',180,.38,7]]){
@@ -223,4 +223,23 @@ test('N1: 260/300/340 kt sensitivity keeps contrast residuals and identical mani
   d340=gateCrossings(follower,0,CONFIG,anchors[2]);
  if(!follower.gateMissing40)
   assert.ok(d260.crossings.RADIAL_40_NM.timeMs>d340.crossings.RADIAL_40_NM.timeMs);
+});
+
+test('C2: floor EACH absolute airborne timestamp to minute before taking successive differences',()=>{
+ const mk=(id,timeMs,exit='GTQ')=>({id,status:'served',airborneMs:timeMs,exit});
+ const sample=intervalSample({departures:[
+  mk('A',59999),mk('B',60001),mk('C',119999),mk('D',120001)
+ ]},{...CONFIG,demand:{...CONFIG.demand,measurementStartMs:0,measurementEndMs:3600000}});
+ assert.deepEqual(sample.intervals,[60,0,60]);
+ assert.deepEqual(sample.sameExit,[1,1,1]);
+ assert.equal(sample.observationOperator,
+  'FLOOR_EACH_ABSOLUTE_TAKEOFF_TIMESTAMP_TO_UTC_MINUTE_BEFORE_DIFFERENCE');
+ assert.ok(sample.intervals.every(x=>x%60===0));
+});
+test('C2: quantisation does not change underlying modelled departure airborne times or total delay',()=>{
+ const m=fixture(CONFIG,20,1);
+ const before=simulate(m,CONFIG,{policy:'FIFO',preset:'CURRENT'});
+ const raw=before.departures.map(x=>[x.id,x.airborneMs,x.delayMs]);
+ intervalSample(before,CONFIG);
+ assert.deepEqual(before.departures.map(x=>[x.id,x.airborneMs,x.delayMs]),raw);
 });
