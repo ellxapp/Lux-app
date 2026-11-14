@@ -197,12 +197,18 @@ test('B2: observed 20-21 gate is explicitly evaluated and nonmatching demand is 
  assert.equal(levels.levels.find(l=>l.arrivalsPerHour===18).observedValidityGate.status,'NOT_APPLICABLE');
  for(const rate of [20,21]){
   const gate=levels.levels.find(l=>l.arrivalsPerHour===rate).observedValidityGate;
-  assert.notEqual(gate.status,'NOT_APPLICABLE');
+  assert.equal(gate.status,'PASS','observed peak consistency gate must pass, not just be reported');
+  assert.ok(gate.modelArrivalsPerHour>=19&&gate.modelArrivalsPerHour<=21);
+  assert.ok(gate.modelDeparturesPerHour>=2);
   assert.equal(gate.minAcceptedDeparturesPerHour,2);
   assert.deepEqual(gate.observedArrivalBandPerHour,[19,21]);
  }
+ assert.equal(levels.overallObservedValidityStatus,'PASS');
  assert.equal(levels.saturatedArrivalOnly.status,'SYNTHETIC_CORE_ONLY_SATURATED_DIAGNOSTIC_NOT_OBSERVED');
  assert.ok(levels.saturatedArrivalOnly.arrivalsPerHour>0);
+ assert.equal(levels.saturatedArrivalOnly.coreQueueShare,1);
+ assert.equal(levels.saturatedArrivalOnly.fullMixtureTailSelected,0);
+ assert.equal(levels.saturatedArrivalOnly.observedReferenceApproxArrivalsPerHour,22);
 });
 test('A12/E5: exact zero-slack threshold served and negative slack opportunity rejected',()=>{
  const c=clone(DEFAULT_CONFIG);c.measurementStartMs=0;c.measurementEndMs=3600000;
