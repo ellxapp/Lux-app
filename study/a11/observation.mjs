@@ -48,6 +48,27 @@ export function isBusyArrival(t,allArrivals,threshold=12){
  for(const start of starts)if(lower(start+3600000)-lower(start)>=threshold)return true;
  return false;
 }
+// A1.1 extraction filter, not an operational LVP declaration model (A1.4).
+// Timestamp units are UTC milliseconds. Only reports at or before follower hh:00 are eligible.
+export function selectHourlyMetar(followerTimeMs,reports){
+ const hourStart=Math.floor(followerTimeMs/3600000)*3600000;
+ const valid=reports.filter(r=>Number.isFinite(r.timeMs)&&r.timeMs<=hourStart&&hourStart-r.timeMs<=5400000)
+  .sort((a,b)=>b.timeMs-a.timeMs);
+ return valid[0]||null;
+}
+export function syntheticWeatherClass(metar,runwayHeadingDeg){
+ if(!metar)return {classification:'UNKNOWN',fitEligible:false,source:'NO_METAR'};
+ const lvp= (Number.isFinite(metar.rvrAM)&&metar.rvrAM<=800)||
+  (Number.isFinite(metar.visibilityM)&&metar.visibilityM<=800)||
+  (['BKN','OVC','VV'].includes(metar.ceilingType)&&Number.isFinite(metar.ceilingFt)&&metar.ceilingFt<=200);
+ const component=Number.isFinite(metar.windDirectionDeg)&&Number.isFinite(metar.windKt)?
+  metar.windKt*Math.cos((metar.windDirectionDeg-runwayHeadingDeg)*Math.PI/180):null;
+ const highHeadwind=component!==null&&component>=15;
+ return {classification:lvp?'LVP_PROXY':highHeadwind?'HW15_REPORT':'GOOD_WEATHER',
+  fitEligible:!lvp&&!highHeadwind,headwindKt:component===null?null:Math.round(component*1000)/1000,
+  source:'A1.1_METAR_HOURLY_PROXY',lvpProxy:lvp,windUnknown:component===null};
+}
+
 export function classifyRegime(leaderMs,followerMs,departures){
  const between=departures.filter(d=>d.takeoffMs>leaderMs&&d.takeoffMs<followerMs);
  if(between.some(d=>d.mtowTonnes>=136))return '10NM';
