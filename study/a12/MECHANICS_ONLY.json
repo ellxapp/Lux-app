@@ -41,8 +41,8 @@
   "drainEndMs": 7200000,
   "stepMs": 1000,
   "seed": 20261114,
-  "arrivalCount": 90,
-  "arrivalRequestStepMs": 66000,
+  "arrivalCount": 60,
+  "arrivalRequestStepMs": 120000,
   "arrivalRequestJitterMs": 7000,
   "departureEvery": 2,
   "departureDemandDelayMs": 0,
@@ -86,5 +86,6 @@
       "development": "OBSERVED_AGGREGATE_DEV_NOT_FIT_TARGET",
       "holdout": "OBSERVED_AGGREGATE_HOLDOUT_REPORT_ONLY"
     }
-  }
+  },
+  "syntheticDemandNote": "Illustrative 120-second ARR request spacing with a DEP opportunity every two ARR slots; chosen to exercise paired release outcomes, NOT fitted to observed movement counts."
 }
