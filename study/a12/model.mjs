@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {digest,byteCompare} from '../core.mjs';
 import {profileFor,timeToGoMs,distanceBeforeThresholdNM,minimumCommonFinalNM,wakeFloorNM,assignEffectiveTargets,selectType,APPROVED_TYPE_WEIGHTS} from '../a11/model.mjs';
 
-export const A12_VERSION='A1.2-locked-arrival-spacing-candidate-2';
+export const A12_VERSION='A1.2-queue-conditional-candidate-3';
 export const CONDITIONAL='LINEUP_BEHIND_LANDING';
 export const SEQUENTIAL='SEQUENTIAL_AFTER_RUNWAY_CLEAR';
 export const TIME='TIME';
@@ -37,7 +37,7 @@ export function validateConfig(c){
  check(c.arrivalROTMs>0&&c.stepMs>0&&c.departureEvery>0&&c.arrivalCount>=2,'invalid positive timing or counts');
  check(c.measurementEndMs>c.measurementStartMs&&c.drainEndMs>=c.measurementEndMs,'invalid windows');
  check(Array.isArray(c.arrivalDemandLevelsPerHour)&&
-  JSON.stringify(c.arrivalDemandLevelsPerHour)==='[18,20,22]','fixed 18/20/22 ARR/h scenarios required');
+  JSON.stringify(c.arrivalDemandLevelsPerHour)==='[18,20,21,22]','fixed 18/20/21/22 ARR/h scenarios required');
  integer(c.arrivalDemandHours,'arrivalDemandHours',1);
  check(c.arrivalDemandHours===2,'two-hour demand horizon required');
  check(c.environment?.lvp===false,'LVP excluded from A1.2');
@@ -83,7 +83,14 @@ export function makeManifest(c=DEFAULT_CONFIG){
  // Reuse the exact locked A1.1 assignment function, not a new approximate
  // mixture sampler. All draws are immutable manifest fields before any run.
  const assigned=assignEffectiveTargets({schema:11,synthetic:true,flights:[arrivals]},lockedA11.parameters);
- const fixedArrivals=assigned.flights[0].map(a=>({...a,
+ // Draw both alternatives before scheduling, from the SAME preassigned normal.
+ // A1.1's original mixture sampler remains unchanged. For core-only, force
+ // the immutable component quantile above the locked mixing probability.
+ const assignedCore=assignEffectiveTargets({schema:11,synthetic:true,
+  flights:[arrivals.map(a=>({...a,componentQuantile:1}))]},lockedA11.parameters);
+ const fixedArrivals=assigned.flights[0].map((a,i)=>({...a,
+   coreTargetM:assignedCore.flights[0][i].effectiveTargetM,
+   coreTargetSource:'A11_LOCKED_CORE_SAME_NORMAL',
    arrivalSpacingSource:A11_SPACING_PROVENANCE.distribution}));
  return {schema:12,synthetic:true,seed:c.seed,startUtc:'2026-01-01T00:00:00.000Z',
   arrivals:fixedArrivals,opportunities,source:'SYNTHETIC_ONLY_FIXED_MANIFEST',version:A12_VERSION,
@@ -108,6 +115,8 @@ export function validateManifest(m,c){
    check(a.effectiveTargetM===null||a.effectiveTargetM===undefined,'first ARR cannot have a follower target');
   }else{
    check(Number.isSafeInteger(a.effectiveTargetM)&&a.effectiveTargetM>0 &&
+     Number.isSafeInteger(a.coreTargetM)&&a.coreTargetM>0 &&
+     a.coreTargetSource==='A11_LOCKED_CORE_SAME_NORMAL' &&
      a.effectiveTargetSource==='TARGET_AS_EQUIVALENT_TRACK_DISTANCE' &&
      a.arrivalSpacingSource===A11_SPACING_PROVENANCE.distribution,
      'immutable locked A1.1 target required for every arrival pair');
@@ -124,10 +133,14 @@ export function validateManifest(m,c){
  // it from the frozen manifest quantiles and the exact A1.1 locked parameters.
  const recomputed=assignEffectiveTargets({schema:11,synthetic:true,
   flights:[m.arrivals]},lockedA11.parameters).flights[0];
+ const recomputedCore=assignEffectiveTargets({schema:11,synthetic:true,
+  flights:[m.arrivals.map(a=>({...a,componentQuantile:1}))]},lockedA11.parameters).flights[0];
  for(let i=0;i<m.arrivals.length;i++){
   const observed=m.arrivals[i],expected=recomputed[i];
   check(observed.effectiveTargetM===expected.effectiveTargetM&&
    observed.effectiveTargetComponent===expected.effectiveTargetComponent&&
+   observed.coreTargetM===recomputedCore[i].effectiveTargetM&&
+   observed.coreTargetSource==='A11_LOCKED_CORE_SAME_NORMAL'&&
    observed.effectiveTargetSource===expected.effectiveTargetSource,
    'immutable A1.1 target differs from locked normal/component quantiles');
  }
@@ -229,7 +242,15 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   // The delivered-spacing target is frozen per follower, independent of
   // whether an intervening departure is attempted, accepted or missed.
   // No post-departure catch-up at the 3NM surveillance minimum.
-  const lockedTargetMs=prev?timeToGoMs(f.effectiveTargetM,profileFor(f.type,f.headwindKt)):0;
+  const followerProfile=profileFor(f.type,f.headwindKt);
+  const coreTargetGapMs=prev?timeToGoMs(f.coreTargetM,followerProfile):0;
+  const coreRequiredMs=Math.max(noDepFloor,coreTargetGapMs);
+  // Decision uses original request time BEFORE any departure release attempt.
+  // Queued => core-only; nonqueued => original full mixture, including tail.
+  const isQueued=!!prev && f.requestMs < prev.timeMs+coreRequiredMs;
+  const selectedTargetM=isQueued?f.coreTargetM:f.effectiveTargetM;
+  const selectedComponent=isQueued?'CORE':f.effectiveTargetComponent;
+  const lockedTargetMs=prev?timeToGoMs(selectedTargetM,followerProfile):0;
   const noDepRequiredMs=Math.max(noDepFloor,lockedTargetMs);
   const noDepTime=prev?Math.max(f.requestMs,prev.timeMs+noDepRequiredMs):f.requestMs;
   const d=dByFollower.get(f.id);
@@ -282,9 +303,14 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   }
   const row={...f,status:'served',timeMs:selectedTime,delayMs:selectedTime-f.requestMs,
    arrivalClearMs:selectedTime+c.arrivalROTMs,bindingReasons:[],
-   lockedTargetM:f.effectiveTargetM??null,
-   lockedTargetComponent:f.effectiveTargetComponent??null,
+   lockedTargetM:selectedTargetM??null,
+   lockedTargetComponent:selectedComponent??null,
    lockedTargetGapMs:lockedTargetMs,
+   fullMixtureTargetM:f.effectiveTargetM??null,
+   coreOnlyTargetM:f.coreTargetM??null,
+   queueConditional:isQueued,
+   queueThresholdMs:prev?prev.timeMs+coreRequiredMs:null,
+   queueDecisionRule:'REQUEST_EARLIER_THAN_PREV_THRESHOLD_PLUS_CORE_REQUIRED',
    a11LockedSpacingBinding:!!prev&&selectedTime>=prev.timeMs+noDepRequiredMs,
    sourceStatus:'SYNTHETIC_UNVALIDATED'};
   arrivals.push(row);
@@ -309,11 +335,17 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
    negativeShare:slack.length?slack.filter(x=>x<0).length/slack.length:null},
   arrivalDelaySeconds:{median:quant(arrDelay,.5),p90:quant(arrDelay,.9)},
   departureDelaySeconds:{median:quant(depDelay,.5),p90:quant(depDelay,.9)},
-  bindingReasons:binding,capacityEligible:false,capacityLabel:'MECHANICS_ONLY_UNVALIDATED_NOT_TECHNICAL_CAPACITY'};
+  bindingReasons:binding,
+  queueConditions:{queued:arrivals.filter(x=>x.queueConditional===true).length,
+   nonqueued:arrivals.filter((x,i)=>i>0&&x.queueConditional===false).length,
+   coreSelected:arrivals.filter(x=>x.lockedTargetComponent==='CORE').length,
+   tailSelected:arrivals.filter(x=>x.lockedTargetComponent==='TAIL').length},
+  capacityEligible:false,capacityLabel:'MECHANICS_ONLY_UNVALIDATED_NOT_TECHNICAL_CAPACITY'};
  return {meta:{modelVersion:A12_VERSION,sequence,policy,manifestSha256:digest(manifest),
   configSha256:digest(c),preset:c.preset,observation:'HYPOTHETICAL_MECHANICS',source:'SYNTHETIC_ONLY',
   a11LockReadOnly:true,a11Spacing:A11_SPACING_PROVENANCE,
-  arrivalTargetApplication:'LOCKED_TARGET_PER_ADJACENT_ARR_PAIR_INCLUDING_DEP_OPPORTUNITIES',
+  arrivalTargetApplication:'QUEUE_CONDITIONAL_CORE_IF_REQUEST_BEFORE_EARLIEST_CORE_THRESHOLD_ELSE_FULL_MIXTURE',
+  queueConditionalSource:'CLAUDE_REVIEW_5903308924_MODERATE_CONFIDENCE',
   units:{time:'integer-ms',distance:'NM'},
   measurement:{startMs:c.measurementStartMs,endMs:c.measurementEndMs,drainEndMs:c.drainEndMs}},
   totals,metrics,arrivals,departures,opportunities,events};
