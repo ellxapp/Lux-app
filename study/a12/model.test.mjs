@@ -144,3 +144,13 @@ test('A12: observation aggregate and A1.1 lock remain read-only, no fitting',()=
  assert.equal(dev.strata.find(x=>x.id==='10NM_report').intP10,179);
  assert.equal(digest(lock),'be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb');
 });
+
+test('A12 candidate default synthetic demand exercises real departure opportunities and policy differences',()=>{
+ const c=clone(DEFAULT_CONFIG);
+ const run=pairedScenarios(makeManifest(c),c);
+ assert.equal(run.scenarios.length,4);
+ assert.ok(run.scenarios.every(x=>x.metrics.usedDepartureOpportunities>0),
+  'default scenario must not silently contain zero served departures');
+ const n=run.scenarios.map(x=>x.metrics.usedDepartureOpportunities);
+ assert.ok(new Set(n).size>1,'paired time/distance and line-up choices must be distinguishable');
+});
