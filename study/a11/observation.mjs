@@ -82,7 +82,7 @@ export function observeDay({arrivals,departures=[],dayId,source='SYNTHETIC',weat
  const out=[];
  for(let i=1;i<order.length;i++){
   const leader=order[i-1],follower=order[i],intervalS=(follower.timeMs-leader.timeMs)/1000;
-  if(leader.runway!==follower.runway||intervalS>900||intervalS<0||!weatherGood)continue;
+  if(intervalS>900||intervalS<0||!weatherGood)continue;
   if(!isBusyArrival(follower.timeMs,all))continue;
   const regime=classifyRegime(leader.timeMs,follower.timeMs,departures);
   const applicable=regime==='5NM'&&follower.headwindKt>=15?'hw15_report':regime;
