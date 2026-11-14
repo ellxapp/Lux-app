@@ -133,3 +133,21 @@ test('S10 exact A1.1 lock stays sealed and A1.3 nonoperational',()=>{
  assert.equal(CONFIG.nonOperational,true);
  assert.equal(VERSION,'A1.3-initial-type-exit-candidate-1');
 });
+
+test('A3: deliberate co-requested same-exit TP then jet can swap under 120s limit',()=>{
+ const m=fixture(CONFIG,14,1,20261114);
+ const one=m.departures[0],two=m.departures[1];
+ one.category='TURBOPROP';one.exit='GTQ';one.requestMs=0;
+ two.category='JET';two.exit='GTQ';two.requestMs=0;
+ for(let i=2;i<m.departures.length;i++)m.departures[i].requestMs+=1000000;
+ const r=comparePair(m);
+ assert.ok(r.candidate.swaps.length>0,'targeted feasible adjacent swap must exercise intervention');
+ assert.equal(r.candidate.swaps[0].earlierId,one.id);
+ assert.equal(r.candidate.swaps[0].laterId,two.id);
+ const fifo=new Map(r.fifo.departures.map(x=>[x.id,x]));
+ for(const x of r.candidate.departures){
+  const original=fifo.get(x.id);
+  if(x.status==='served'&&original.status==='served')
+   assert.ok(x.airborneMs-original.airborneMs<=120000);
+ }
+});
