@@ -1,0 +1,221 @@
+{
+  "schema": 1,
+  "status": "OBSERVED_AGGREGATE_DEV",
+  "source": "ANA September 2026 movements, ADS-B adsb.lol, METAR, Claude busypairs and devexport2 (ANA internal sources retained in Google Drive; only these published pooled aggregates here)",
+  "sourceComment": "https://github.com/ellxapp/panel/issues/6#issuecomment-6868493243",
+  "definitionComment": "https://github.com/ellxapp/panel/issues/6#issuecomment-6868452613",
+  "extractionExportSha256": "e7426808a270f894e3ce4e3c2de3238eadbc7ec1365ecc8f39199a79626738d5",
+  "scriptHashesTruncated": {
+    "busypairs": "c045e8a1…8e67",
+    "devexport2": "61a73590…0ff8",
+    "ana": "bc8b728f…61d4",
+    "wx": "20e7ee86…50df"
+  },
+  "days": {
+    "excluded": [
+      18,
+      19,
+      21,
+      25,
+      28
+    ],
+    "holdout": [
+      3,
+      6,
+      9,
+      12,
+      15,
+      24,
+      27,
+      30
+    ],
+    "development": [
+      1,
+      2,
+      4,
+      5,
+      7,
+      8,
+      10,
+      11,
+      13,
+      14,
+      16,
+      17,
+      20,
+      22,
+      23,
+      26,
+      29
+    ]
+  },
+  "population": {
+    "period": "September 2026",
+    "busyThresholdIFRArrivals": 12,
+    "busyWindowSeconds": 3600,
+    "maxConsecutiveArrivalIntervalSeconds": 900,
+    "bothRunways": true,
+    "departureTime": "ANA OUT act_date_d +30 s",
+    "heavyThresholdMTOWTonnes": 136,
+    "weather": "latest METAR <= hh:00, <=90 min, non LVP, headwind <15 kt",
+    "distanceCapture": "follower within 15 NM and 1 NM / 25 degree final corridor; empirical capture by interval",
+    "denominators": "nPairs for interval, nPairsWithDistance for distance and fraction"
+  },
+  "typeMap": {
+    "turboprop": [
+      "DH8D",
+      "PC12",
+      "AT72",
+      "AT75",
+      "AT76"
+    ],
+    "otherIncludedFixedWing": "J"
+  },
+  "strata": [
+    {
+      "id": "overall_5NM",
+      "nPairs": 469,
+      "nPairsWithDistance": 353,
+      "nDays": 17,
+      "distMedian": 6.04,
+      "distP10": 4.67,
+      "distP90": 7.83,
+      "fracBelow5": 0.184,
+      "intMedian": 165,
+      "intP10": 123,
+      "role": "fit"
+    },
+    {
+      "id": "J-J",
+      "nPairs": 234,
+      "nPairsWithDistance": 166,
+      "nDays": 17,
+      "distMedian": 6.19,
+      "distP10": 4.83,
+      "distP90": 7.9,
+      "fracBelow5": 0.145,
+      "intMedian": 167,
+      "intP10": 127,
+      "role": "fit"
+    },
+    {
+      "id": "J-TP",
+      "nPairs": 100,
+      "nPairsWithDistance": 82,
+      "nDays": 16,
+      "distMedian": 6.18,
+      "distP10": 4.98,
+      "distP90": 7.57,
+      "fracBelow5": 0.122,
+      "intMedian": 166,
+      "intP10": 135,
+      "role": "fit"
+    },
+    {
+      "id": "TP-J",
+      "nPairs": 107,
+      "nPairsWithDistance": 81,
+      "nDays": 17,
+      "distMedian": 5.72,
+      "distP10": 4.44,
+      "distP90": 7.71,
+      "fracBelow5": 0.247,
+      "intMedian": 153,
+      "intP10": 115,
+      "role": "fit"
+    },
+    {
+      "id": "hw15_report",
+      "nPairs": 20,
+      "nPairsWithDistance": 13,
+      "nDays": 3,
+      "distMedian": 5.22,
+      "distP10": 4.48,
+      "distP90": 7.5,
+      "fracBelow5": 0.385,
+      "intMedian": 186,
+      "intP10": 127,
+      "role": "report"
+    },
+    {
+      "id": "TP-TP_report",
+      "nPairs": 27,
+      "nPairsWithDistance": 23,
+      "nDays": 13,
+      "distMedian": 5.15,
+      "distP10": 4.34,
+      "distP90": 7.69,
+      "fracBelow5": 0.435,
+      "intMedian": 146,
+      "intP10": 115,
+      "role": "report"
+    },
+    {
+      "id": "8NM_report",
+      "nPairs": 191,
+      "nPairsWithDistance": 81,
+      "nDays": 16,
+      "distMedian": 6.97,
+      "distP10": 5.92,
+      "distP90": 9.66,
+      "fracBelow5": 0,
+      "intMedian": 263,
+      "intP10": 162,
+      "role": "report"
+    },
+    {
+      "id": "10NM_report",
+      "nPairs": 51,
+      "nPairsWithDistance": 21,
+      "nDays": 16,
+      "distMedian": 8.09,
+      "distP10": 6.77,
+      "distP90": 9.43,
+      "fracBelow5": 0,
+      "intMedian": 260,
+      "intP10": 179,
+      "role": "report"
+    }
+  ],
+  "hardTolerances": {
+    "overall_5NM": {
+      "distMedian": 0.3694,
+      "distP10": 0.5035,
+      "distP90": 0.5393,
+      "fracBelow5": 0.1034,
+      "intMedian": 13.7277,
+      "intP10": 15.2093
+    },
+    "J-J": {
+      "distMedian": 0.5401,
+      "fracBelow5": 0.13
+    },
+    "J-TP": {
+      "distMedian": 0.6295,
+      "fracBelow5": 0.1838
+    },
+    "TP-J": {
+      "distMedian": 0.8195,
+      "fracBelow5": 0.1929
+    }
+  },
+  "hardMetricCount": 12,
+  "bootstrap": {
+    "cluster": "day",
+    "replicates": 20000,
+    "seed": 20261114,
+    "quantile": "type7",
+    "alpha": 0.004166666666666667,
+    "scale": "sqrt(1+D_dev/D_hold)",
+    "floor": {
+      "nm": 0.1,
+      "s": 5,
+      "fraction": 0.05
+    }
+  },
+  "units": {
+    "distance": "NM",
+    "interval": "seconds",
+    "fraction": "0-1"
+  }
+}
