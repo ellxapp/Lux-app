@@ -126,6 +126,12 @@ test('S8 S9 50-seed paired scenarios span two backgrounds, four dep rates and tw
   assert.ok(x.gateSummaries.fifo.noDifferentExitSpacingClaim);
   assert.equal(x.gateSummaries.fifo.within180SecondsComparablePopulation.observedReferenceNPairs,52);
   assert.ok(x.gateSummaries.fifo.within180SecondsComparablePopulation.pairs<=x.gateSummaries.fifo.sameExitPairs);
+  assert.equal(x.exitMixAudit.syntheticTotalDepartures,50*x.departureDemandPerHour*2);
+  assert.equal(Object.values(x.exitMixAudit.syntheticCounts).reduce((sum,n)=>sum+n,0),
+   x.exitMixAudit.syntheticTotalDepartures);
+  assert.equal(x.exitMixAudit.observedPercent.GTQ,37);
+  assert.equal(x.exitMixAudit.observedPercent.OTHER_UNKNOWN,2);
+  assert.equal(x.typeMixAudit.observedTPSharePercent,null);
  }
  assert.equal(r.lockSha256,A11_LOCK_SHA256);
 });
