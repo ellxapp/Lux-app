@@ -34,7 +34,6 @@
   },
   "surveillanceNM": 3,
   "hardWakeSource": "A1.1 existing ICAO PANS-ATM distance minima, unchanged",
-  "maxArrivalDeferralMs": 90000,
   "runwayClearAfterDepAirborneMs": 10000,
   "measurementStartMs": 1800000,
   "measurementEndMs": 5400000,
@@ -151,5 +150,25 @@
       ],
       "note": "Synthetic fixed request count and type mix, NOT observed time stamps or certified aircraft schedule"
     }
+  },
+  "maxIncrementalArrivalDelayMs": 90000,
+  "incrementalArrivalDelaySource": "SYNTHETIC_UNVALIDATED: candidate follower threshold minus no-departure follower threshold (not accumulated original-request delay)",
+  "departureReleaseRule": "FIFO_WAIT_NEXT_ARR_GAP_AND_INCREMENTAL_DELAY",
+  "observedLikeGate": {
+    "sourceReview": "pullrequestreview-5903407826",
+    "demandArrivalsPerHour": [
+      20,
+      21
+    ],
+    "arrivalServedBandPerHour": [
+      19,
+      21
+    ],
+    "departuresRequestedPerHour": 3,
+    "heavyRequestsPerHour": 2,
+    "requireAllObservedLikeDeparturesServed": true,
+    "departureHorizon": "FULL_TWO_HOUR_PLUS_DRAIN_WITH_SEPARATE_MEASUREMENT_HOUR",
+    "reportMeanDepartureDelay": true,
+    "status": "PREDECLARED_VALIDITY_GATE_UNVALIDATED_MECHANICS"
   }
 }
