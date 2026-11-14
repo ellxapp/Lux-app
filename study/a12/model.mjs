@@ -660,7 +660,16 @@ export function replicateComparison(base=DEFAULT_CONFIG){
       violations.push(explainNonmonotonic(conditional,sequential,r.seed,policy));
     }
     const share=violations.length/rows.length;
+    const fullRunViolations=rows.filter(r=>{
+     const conditional=r.scenarios.find(x=>x.meta.sequence===CONDITIONAL&&x.meta.policy===policy);
+     const sequential=r.scenarios.find(x=>x.meta.sequence===SEQUENTIAL&&x.meta.policy===policy);
+     return sequential.metrics.usedDepartureOpportunities>
+      conditional.metrics.usedDepartureOpportunities;
+    }).map(r=>r.seed);
     monotonicity.push({policy,n:rows.length,violatingSeeds:violations.length,
+     fullRunViolatingSeeds:fullRunViolations.length,
+     fullRunSequentialHigherShare:fullRunViolations.length/rows.length,
+     fullRunViolatingSeedIds:fullRunViolations,
      shareSequentialHigher:share,violations,flag:share>base.replication.monotonicityMaxViolationShareAdvisory?
       'ELEVATED_NONMONOTONICITY_REQUIRES_REVIEW':'LOW_NONMONOTONICITY',
      sourceStatus:'GREEDY_SCHEDULER_DIAGNOSTIC_NOT_SAFETY_GATE'});
