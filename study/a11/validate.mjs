@@ -21,7 +21,7 @@ export function validateHoldout({lock,development,holdout,lockCommitSha}){
   const number=observed?.[h.metric];
   const isDistance=h.metric.startsWith('dist')||h.metric==='fracBelow5';
   const n=isDistance?observed?.nPairsWithDistance:observed?.nPairs;
-  const nDays=isDistance?(observed?.nDaysWithDistance??observed?.nDays):observed?.nDays;
+  const nDays=isDistance?observed?.nDaysWithDistance:observed?.nDays;
   const predicted=synthetic.observations[h.id]?.[h.metric];
   let status='PASS',absoluteError=null;
   if(!Number.isFinite(n)||n<15||!Number.isFinite(nDays)||nDays<5)status='INSUFFICIENT_HOLDOUT';
