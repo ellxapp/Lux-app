@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "status": "APPROVED_LOCK",
+  "lockPath": "study/a11/calibration-lock.json",
+  "lockSha256": "be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb",
+  "lockGitBlobSha1": "fa7917bc3b4a2f32f7532d140f3215ab5c576046",
+  "lockCommitSha": "e35a26a98e2d7630f7941cd90e05974f41a4f711",
+  "modelSourceCommitSha": "7fa9847ca4451b15acf28861f86cbd6ef8ddd319",
+  "approvedBy": "Philip",
+  "approvalReference": "https://github.com/ellxapp/panel/issues/6#issuecomment-6869579427",
+  "approvalScope": "Exactly the existing, immutable A1.1 two-component development-fit candidate; holdout may be evaluated read-only; no model retuning.",
+  "attestationKind": "SEPARATE_APPROVAL_DOES_NOT_MODIFY_LOCK",
+  "holdoutDates": [
+    3,
+    6,
+    9,
+    12,
+    15,
+    24,
+    27,
+    30
+  ]
+}

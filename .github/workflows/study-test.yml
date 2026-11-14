@@ -12,13 +12,35 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: node --version
       - run: node --test study/*.test.mjs
+      - run: node --test study/a11/*.test.mjs
       - name: Verify old app files are untouched
         run: git diff --exit-code ef8737e1deed33327788d1319da1c232bd7cb027 HEAD -- index.html relay-worker.js README.md .nojekyll
+      - name: A1.1 dev-only candidate (never committed)
+        run: node study/a11/fit-cli.mjs --candidate-out /tmp/a11-lock.candidate.json
+      - name: Export unapproved candidate for Claude review
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11-candidate-not-approved
+          path: /tmp/a11-lock.candidate.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Historical discrepancy report (not calibration)
+        run: node study/a11/2018-cli.mjs /tmp/a11-2018-discrepancy.json
+      - name: Read-only September holdout validation (sealed lock)
+        run: node study/a11/validate-cli.mjs --out /tmp/a11-holdout-evaluation.json
+      - name: Publish holdout validation report only (pooled metrics)
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11-holdout-readonly-report
+          path: /tmp/a11-holdout-evaluation.json
+          retention-days: 14
+          if-no-files-found: error
       - name: Synthetic outputs
         run: |
           node study/cli.mjs --config study/presets/SYNTH.json --out /tmp/lux-stage-a --count 30
