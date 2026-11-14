@@ -114,7 +114,7 @@ export function bunchedReadyTimes(c,seed,count,backgroundArrivalsPerHour){
   }
  }
  return {times:times.sort((a,b)=>a-b),wave,clusters:clusters.length,
-  parameters:{...p},source:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS'};
+  parameters:{...p},source:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT'};
 }
 export function makeManifest(c=CONFIG,{seed=c.replication.seedStart,departuresPerHour=16,backgroundArrivalsPerHour=1}={}){
  validateConfig(c);integer(seed,'seed');
@@ -582,6 +582,7 @@ export function replicate(c=CONFIG,{jetAnchorKt=c.fittedSpeedContrast.jetAnchorK
      representativeManifestSha256:representative.manifestSha256});
    }
  return {schema:1,status:'MECHANICS_ONLY_UNVALIDATED',version:VERSION,
+  takeoffIntervalFitStatus:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT',
   mainBaseSha:c.mainBaseSha,lockSha256:LOCK,fit,jetAnchorKt,sources:c.sourceComments,
   cases,seedCount:c.replication.seeds,observed:c.observed,
   warnings:['Not an operational ATC, CTOT/ATFM, separation or runway capacity model',
@@ -591,5 +592,7 @@ export function replicate(c=CONFIG,{jetAnchorKt=c.fittedSpeedContrast.jetAnchorK
    'GTQ 37% is pooled observed exit frequency, synthetic independent assignments',
    'Background ARR 1/h and 7/h are synthetic requests matched to observed broad regimes',
    'Type and heavy shares are UNVALIDATED, no observed departure aircraft type shares supplied',
+   'C2 whole-minute observed takeoff timestamp operator is used only for development takeoff interval fit, not physical runway event timing',
+   'Preliminary: limited one-position resequencing has little effect at modelled ELLX demand levels; longer-horizon DMAN/TSAT planning outside A1.3',
    'CTOT/ATFM slot compliance NOT MODELLED', 'No new hard wake/procedural minima substituted']};
 }
