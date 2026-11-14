@@ -111,12 +111,20 @@ test('fit is development-only and deterministic on synthetic small sample',()=>{
  assert.throws(()=>fitDevelopment(bad,{days:5,perDay:24,maxRounds:1}),/only approved/);
 });
 
-test('holdout evaluation refuses non-approved lock and no missing-day substitution',()=>{
- const lock={status:'CANDIDATE_NOT_APPROVED',hardMetricCount:12};
- assert.throws(()=>validateHoldout({lock,development:benchmark,holdout:{},lockCommitSha:SHA}),/approved/);
- const holdout={status:'OBSERVED_AGGREGATE_HOLDOUT',days:benchmark.days.holdout.slice(1),strata:[]};
- const approved={...lock,status:'APPROVED_LOCK',sourceStatus:'OBSERVED_AGGREGATE_DEV',benchmarkSha256:digest(benchmark)};
- assert.throws(()=>validateHoldout({lock:approved,development:benchmark,holdout,lockCommitSha:SHA}),/holdout days/);
+test('holdout refuses absent, forged or mismatched approval attestation',()=>{
+ const lock=JSON.parse(readFileSync(new URL('./calibration-lock.json',import.meta.url),'utf8'));
+ const attestation=JSON.parse(readFileSync(new URL('./calibration-approval.json',import.meta.url),'utf8'));
+ const holdout=JSON.parse(readFileSync(new URL('../benchmarks/sep2026-holdout-busy12.json',import.meta.url),'utf8'));
+ const SHA_LOCK=attestation.lockCommitSha;
+ assert.throws(()=>validateHoldout({lock,development:benchmark,holdout,lockCommitSha:SHA_LOCK}),/approved/);
+ assert.throws(()=>validateHoldout({lock,attestation:{...attestation,lockSha256:'0'.repeat(64)},development:benchmark,holdout,lockCommitSha:SHA_LOCK}),/approved/);
+ assert.throws(()=>validateHoldout({lock,attestation,development:benchmark,holdout:{...holdout,days:holdout.days.slice(1)},lockCommitSha:SHA_LOCK}),/holdout days/);
+ assert.throws(()=>validateHoldout({lock,attestation,development:benchmark,holdout,lockCommitSha:SHA}),/approved/);
+ assert.equal(attestation.lockSha256,digest(lock));
+ const result=validateHoldout({lock,attestation,development:benchmark,holdout,lockCommitSha:SHA_LOCK});
+ assert.equal(result.status,'PASS');
+ assert.equal(result.results.length,12);
+ assert.ok(result.results.every(r=>r.status==='PASS'));
 });
 
 test('generator writes immutable requested target; physical runner uses it without randomness',()=>{
@@ -227,4 +235,18 @@ test('L3: single published candidate fitting policy and stopping provenance',()=
  assert.ok(Number.isInteger(r.stopping.iterations));
  assert.ok(r.stopping.evaluations>0);
  assert.equal(r.provenance.freeParameterCount,8);
+});
+
+test('locked holdout has approved exact dates, denominator gates and no fit input contamination',()=>{
+ const h=JSON.parse(readFileSync(new URL('../benchmarks/sep2026-holdout-busy12.json',import.meta.url),'utf8'));
+ assert.equal(h.status,'OBSERVED_AGGREGATE_HOLDOUT');
+ assert.deepEqual(h.days,[3,6,9,12,15,24,27,30]);
+ assert.equal(h.strata.find(x=>x.id==='overall_5NM').nPairs,259);
+ assert.equal(h.strata.find(x=>x.id==='overall_5NM').nPairsWithDistance,198);
+ for(const id of ['overall_5NM','J-J','J-TP','TP-J']){
+  const st=h.strata.find(x=>x.id===id);
+  assert.ok(st.nPairsWithDistance>=15&&st.nDaysWithDistance>=5);
+ }
+ assert.equal(h.sourceExportFullSha256NotPublished,true);
+ assert.equal(h.lockSha256,'be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb');
 });
