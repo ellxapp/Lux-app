@@ -19,6 +19,7 @@ jobs:
       - run: node --version
       - run: node --test study/*.test.mjs
       - run: node --test study/a11/*.test.mjs
+      - run: node --test study/a12/*.test.mjs
       - name: Verify old app files are untouched
         run: git diff --exit-code ef8737e1deed33327788d1319da1c232bd7cb027 HEAD -- index.html relay-worker.js README.md .nojekyll
       - name: A1.1 dev-only candidate (never committed)
@@ -39,6 +40,15 @@ jobs:
         with:
           name: a11-holdout-readonly-report
           path: /tmp/a11-holdout-evaluation.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: A1.2 candidate (synthetic only)
+        run: node study/a12/cli.mjs --out /tmp/a12-first-candidate.json
+      - name: Export A1.2 first candidate (non-operational)
+        uses: actions/upload-artifact@v4
+        with:
+          name: a12-mechanics-candidate
+          path: /tmp/a12-first-candidate.json
           retention-days: 14
           if-no-files-found: error
       - name: Synthetic outputs
