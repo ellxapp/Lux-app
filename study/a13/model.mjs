@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {digest} from '../core.mjs';
 
-export const VERSION='A1.3-C1-bunched-ready-candidate-2';
+export const VERSION='A1.3-C2-minute-quantised-candidate-3';
 export const CONFIG=Object.freeze(JSON.parse(readFileSync(new URL('./MECHANICS_ONLY.json',import.meta.url),'utf8')));
 const LOCK='be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb';
 const lockSha=createHash('sha256').update(readFileSync(new URL('../a11/calibration-lock.json',import.meta.url))).digest('hex');
@@ -180,12 +180,18 @@ export function intervalSample(run,c=CONFIG){
  const start=c.demand.measurementStartMs,end=c.demand.measurementEndMs;
  const within=run.departures.filter(d=>d.status==='served'&&d.airborneMs>=start&&d.airborneMs<end)
   .sort((a,b)=>a.airborneMs-b.airborneMs||a.id.localeCompare(b.id));
+ // ANA act_date_d is a whole-minute take-off timestamp. Apply that
+ // observation operator to each absolute airborne time BEFORE differencing.
+ // Do not round the interval itself or quantise the simulator's runway events.
+ const observedTakeoffMs=within.map(d=>Math.floor(d.airborneMs/60000)*60000);
  const intervals=[],sameExit=[];
  for(let i=1;i<within.length;i++){
-  intervals.push((within[i].airborneMs-within[i-1].airborneMs)/1000);
+  intervals.push((observedTakeoffMs[i]-observedTakeoffMs[i-1])/1000);
   sameExit.push(within[i].exit===within[i-1].exit?1:0);
  }
- return {intervals,sameExit,departureCount:within.length};
+ return {intervals,sameExit,departureCount:within.length,
+  observationOperator:'FLOOR_EACH_ABSOLUTE_TAKEOFF_TIMESTAMP_TO_UTC_MINUTE_BEFORE_DIFFERENCE',
+  timeResolutionSeconds:60};
 }
 export function evaluateTakeoffIntervalGate(c=CONFIG,{seeds=c.replication.seeds,
  rates=c.demand.departureLevelsPerHour}={}){
@@ -212,9 +218,10 @@ export function evaluateTakeoffIntervalGate(c=CONFIG,{seeds=c.replication.seeds,
   const medianResidual=measured.median-obs.medianS,
    share120ResidualPP=100*(share120-obs.shareLE120);
   result[wave]={
-   source:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS',
+   source:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT',
    inputs:{backgroundArrivalsPerHour:bg,seedCount:seeds,rates,readyParameters:c.readyTimeProcess[wave],
-    comparator:'FIFO_CURRENT_SYNTHETIC_TAKEOFF_EVENTS_IN_1H_MEASUREMENT_WINDOW',
+    comparator:'FIFO_CURRENT_SYNTHETIC_TAKEOFF_EVENTS_FLOORED_TO_MINUTE_IN_1H_WINDOW',
+    observationOperator:'FLOOR_EACH_ABSOLUTE_TAKEOFF_TIMESTAMP_TO_UTC_MINUTE_BEFORE_DIFFERENCE',
     observedWholeMinuteResolutionSeconds:obs.intervalResolutionSeconds??60},
    observed:{nIntervals:obs.intervals,p10S:obs.p10S,medianS:obs.medianS,p90S:obs.p90S,
     shareLE60:obs.shareLE60,shareLE120:obs.shareLE120,shareLE180:obs.shareLE180,
@@ -231,10 +238,10 @@ export function evaluateTakeoffIntervalGate(c=CONFIG,{seeds=c.replication.seeds,
     status:Math.abs(medianResidual)<=30&&Math.abs(share120ResidualPP)<=10?
      'PASS':'FAIL_OBSERVED_TAKEOFF_INTERVAL_GATE',
     sameExitShare:'REPORT_ONLY',
-    sourceStatus:'DEVELOPMENT_FIT_NO_SEPARATE_HOLDOUT'}
+    sourceStatus:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT'}
   };
  }
- return {label:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS',
+ return {label:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT',
   early:result.early,late:result.late,
   overall:result.early.gate.status==='PASS'&&result.late.gate.status==='PASS'?
    'PASS':'FAIL_OBSERVED_TAKEOFF_INTERVAL_GATE'};
@@ -265,7 +272,7 @@ export function calibrateReadyTimeGrid(base=CONFIG,{developmentSeeds=12}={}){
   combinations.sort((a,b)=>a.loss-b.loss||
    a.parameters.withinClusterGapMs-b.parameters.withinClusterGapMs||
    a.parameters.singleFraction-b.parameters.singleFraction);
-  all[wave]={sourceStatus:'DEV_ONLY_FITTED_TO_SEP2026_TAKEOFF_INTERVALS',
+  all[wave]={sourceStatus:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT',
    searchedCandidates:combinations.length,developmentSeedCount:developmentSeeds,
    best:combinations[0],topThree:combinations.slice(0,3),
    observed:base.observed.takeoffIntervals[wave],
