@@ -8,7 +8,7 @@ with Philip's conditional-line-up decision in comment 6870125771.
 
 ## What changes and what does not
 
-At **each of three 18, 20 and 22 ARR/hour demand levels**, four matched
+At **each of three 18, 20, 21 and 22 ARR/hour demand levels**, four matched
 cases use exactly one immutable generated synthetic traffic manifest: LINEUP_BEHIND_LANDING (ELLX baseline) or
 SEQUENTIAL_AFTER_RUNWAY_CLEAR (conservative sensitivity), each with
 DISTANCE (8/10 NM APP–TWR planning request) or TIME (explicit
@@ -26,7 +26,7 @@ runway clear. Actual conditional line-up location/procedural safeguards are
 not represented. No LVP, CAT I exception, runway exit or DEP–DEP gate rule
 is implemented.
 
-**B1 corrected ARR–ARR delivery:** every follower (whether or not a departure
+**B1/B2 corrected ARR–ARR delivery:** every follower (whether or not a departure
 is proposed between arrivals) carries a frozen `effectiveTargetM` drawn using
 the *exact A1.1 locked eight-parameter two-component distribution*
 (SHA-256 `be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb`).
@@ -36,6 +36,30 @@ required ARR–ARR time is at least the time needed to deliver its locked
 equivalent track-miles target, and the existing surveillance/wake common-final
 floor. After a departure, queued arrivals **cannot recover time by closing up
 to the 3 NM surveillance floor** instead of the locked delivered spacing.
+**B2 queue-conditional application:** each follower carries TWO immutable
+preassigned targets from exactly the locked A1.1 mixture parameters and
+the same stored normal: (1) full mixture, with the frozen tail/core draw;
+(2) core-only. The simulation evaluates whether its original arrival
+request time is strictly earlier than the earliest preceding-arrival
+threshold time plus its core-spacing/hard-minimum time. If queued, the
+core-only target applies; otherwise the original full-mixture target
+applies. The decision precedes any departure-policy decision and
+retains the same immutable alternatives across paired policies.
+This is Claude's updated queue-pressure interpretation (moderate
+confidence), **not independently observed runway/ATCO behaviour**.
+
+**Observed validity gate:** Claude's approved ANA September evening
+aggregate reports 20–21 IFR arrivals per hour on seven days, accompanied
+by about three departures per hour, about two heavy. The conditional
+line-up + DISTANCE case at **both 20 and 21 ARR/h synthetic demand**
+is tested against an explicit observed-consistency gate: 19–21
+modelled ARR/hour and **at least two modelled DEP/hour**. If either
+condition fails, it is reported as `FAIL_OBSERVED_VALIDITY_GATE`;
+**do not change the locked A1.1 parameters or assume validation**.
+An independent high-demand arrival-only stress diagnostic reports a
+core-queue-only saturation rate against Claude's approximate ~22 ARR/h
+reference. The approximate value is a diagnostic, not a fitted target.
+
 No retuning or fresh calibration is performed. The synthetic fleet mix also
 reuses A1.1's **published pooled 4–2NM speed-sample frequency weights**
 (including a representative heavy type), not the original equally-weighted
@@ -46,8 +70,8 @@ minimum and ROT proxy; this is distinct from the original A1.1 calibration
 raise fraction of 1.06%. A1.1 remains a descriptive statistical
 arrival-spacing baseline, not observed vectoring geometry.
 
-Demand levels use **36, 40 and 44 ARR requests over two hours** respectively,
-equivalent to 18/20/22 ARR/hour, on separate seeded manifestations. The same
+Demand levels use **36, 40, 42 and 44 ARR requests over two hours** respectively,
+equivalent to 18/20/21/22 ARR/hour, on separate seeded manifestations. The same
 manifest is reused in all four policies for a given demand level; a separate
 manifest is used at each demand level. A one-hour measurement window is
 reported, with the full two-hour horizon and drain status also retained.
