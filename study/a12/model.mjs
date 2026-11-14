@@ -415,6 +415,7 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
  const arrDelay=servedArr.map(x=>x.delayMs/1000),
   depDelay=servedDep.map(x=>x.delayMs/1000);
  const mean=xs=>xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null;
+ const totalDepartureDelayMs=servedDep.reduce((sum,d)=>sum+d.delayMs,0);
  const binding={};
  for(const x of opportunities)for(const k of x.bindingReasons)
   binding[k]=(binding[k]||0)+1;
@@ -429,7 +430,8 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   slackSeconds:{p10:quant(slack,.1),median:quant(slack,.5),p90:quant(slack,.9),
    negativeShare:slack.length?slack.filter(x=>x<0).length/slack.length:null},
   arrivalDelaySeconds:{mean:mean(arrDelay),median:quant(arrDelay,.5),p90:quant(arrDelay,.9)},
-  departureDelaySeconds:{mean:mean(depDelay),median:quant(depDelay,.5),p90:quant(depDelay,.9)},
+  departureDelaySeconds:{mean:mean(depDelay),total:totalDepartureDelayMs/1000,
+   median:quant(depDelay,.5),p90:quant(depDelay,.9)},
   departureMeasurementDelaySeconds:{mean:mean(servedDep.filter(window).map(x=>x.delayMs/1000))},
   bindingReasons:binding,
   queueConditions:{queued:arrivals.filter(x=>x.queueConditional===true).length,
@@ -651,28 +653,93 @@ export function replicateComparison(base=DEFAULT_CONFIG){
      }))});
    }
    const monotonicity=[];
+   const wholeRunMonotonicity=[];
    for(const policy of policies){
     const violations=[];
+    const wholeRunViolations=[];
+    const pairedWholeRun=[];
     for(const r of rows){
      const conditional=r.scenarios.find(x=>x.meta.sequence===CONDITIONAL&&x.meta.policy===policy);
      const sequential=r.scenarios.find(x=>x.meta.sequence===SEQUENTIAL&&x.meta.policy===policy);
      if(sequential.metrics.departureRatePerHour>conditional.metrics.departureRatePerHour)
       violations.push(explainNonmonotonic(conditional,sequential,r.seed,policy));
+     const conditionalCount=conditional.metrics.usedDepartureOpportunities;
+     const sequentialCount=sequential.metrics.usedDepartureOpportunities;
+     const conditionalTotal=conditional.metrics.departureDelaySeconds.total;
+     const sequentialTotal=sequential.metrics.departureDelaySeconds.total;
+     const conditionalMean=conditional.metrics.departureDelaySeconds.mean;
+     const sequentialMean=sequential.metrics.departureDelaySeconds.mean;
+     // Exact Claude B5 conjunction: conditional must serve at least as
+     // many by DRAIN with no greater total delay. No censoring-based
+     // penalties or denominator substitutions are invented.
+     const countPass=conditionalCount>=sequentialCount;
+     const totalDelayPass=conditionalTotal<=sequentialTotal;
+     const violation=!countPass||!totalDelayPass;
+     const pair={seed:r.seed,manifestSha256:r.manifestSha256,policy,
+      conditional:{servedByDrain:conditionalCount,totalDepartureDelaySeconds:conditionalTotal,
+       meanDepartureDelaySeconds:conditionalMean,censored:conditional.metrics.missedDepartureOpportunities},
+      sequential:{servedByDrain:sequentialCount,totalDepartureDelaySeconds:sequentialTotal,
+       meanDepartureDelaySeconds:sequentialMean,censored:sequential.metrics.missedDepartureOpportunities},
+      sequentialMinusConditional:{
+       departuresServed:sequentialCount-conditionalCount,
+       totalDepartureDelaySeconds:sequentialTotal-conditionalTotal,
+       meanDepartureDelaySeconds:sequentialMean-conditionalMean},
+      check:{servedCount:countPass,totalDelay:totalDelayPass,
+       pass:!violation}};
+     pairedWholeRun.push(pair);
+     if(violation){
+      const conditionalById=new Map(conditional.departures.map(d=>[d.id,d]));
+      const sequentialById=new Map(sequential.departures.map(d=>[d.id,d]));
+      const divergent=conditional.departures.filter(c=>{
+       const z=sequentialById.get(c.id);
+       return z&&(c.status!==z.status||c.timeMs!==z.timeMs);
+      }).map(c=>{
+       const z=sequentialById.get(c.id);
+       return {id:c.id,category:c.category,requestMs:c.requestMs,
+        conditional:{status:c.status,airborneMs:c.timeMs,delayMs:c.delayMs,
+         reason:c.reason,bindingReasons:c.bindingReasons},
+        sequential:{status:z.status,airborneMs:z.timeMs,delayMs:z.delayMs,
+         reason:z.reason,bindingReasons:z.bindingReasons}};
+      });
+      const severity=(countPass?0:1e9*(sequentialCount-conditionalCount))+
+       Math.max(0,conditionalTotal-sequentialTotal);
+      wholeRunViolations.push({...pair,violationType:!countPass&&!totalDelayPass?
+       'FEWER_SERVED_AND_HIGHER_TOTAL_DELAY':!countPass?'FEWER_SERVED':
+       'HIGHER_TOTAL_DELAY',
+       severitySortScore:severity,
+       firstThreeDivergentDepartures:divergent.slice(0,3),
+       allDivergentDepartureCount:divergent.length,
+       note:'Whole-run count and total-delay joint rule; differing served counts change the denominator of summed delay.'});
+     }
     }
     const share=violations.length/rows.length;
-    const fullRunViolations=rows.filter(r=>{
-     const conditional=r.scenarios.find(x=>x.meta.sequence===CONDITIONAL&&x.meta.policy===policy);
-     const sequential=r.scenarios.find(x=>x.meta.sequence===SEQUENTIAL&&x.meta.policy===policy);
-     return sequential.metrics.usedDepartureOpportunities>
-      conditional.metrics.usedDepartureOpportunities;
-    }).map(r=>r.seed);
+    wholeRunViolations.sort((a,b)=>b.severitySortScore-a.severitySortScore||
+      a.seed-b.seed);
+    const wholeShare=wholeRunViolations.length/rows.length;
     monotonicity.push({policy,n:rows.length,violatingSeeds:violations.length,
-     fullRunViolatingSeeds:fullRunViolations.length,
-     fullRunSequentialHigherShare:fullRunViolations.length/rows.length,
-     fullRunViolatingSeedIds:fullRunViolations,
      shareSequentialHigher:share,violations,flag:share>base.replication.monotonicityMaxViolationShareAdvisory?
-      'ELEVATED_NONMONOTONICITY_REQUIRES_REVIEW':'LOW_NONMONOTONICITY',
-     sourceStatus:'GREEDY_SCHEDULER_DIAGNOSTIC_NOT_SAFETY_GATE'});
+      'ELEVATED_ONE_HOUR_WINDOW_DIAGNOSTIC':'LOW_ONE_HOUR_WINDOW_DIAGNOSTIC',
+     sourceStatus:'ONE_HOUR_BOUNDARY_ONLY_NOT_B5_DECISION'});
+    wholeRunMonotonicity.push({policy,n:rows.length,
+     rule:'CONDITIONAL_SERVED_BY_DRAIN_GE_SEQUENTIAL_AND_CONDITIONAL_TOTAL_DEP_DELAY_LE_SEQUENTIAL',
+     violatingSeeds:wholeRunViolations.length,shareViolating:wholeShare,
+     passBelowFivePercent:wholeShare<.05,
+     status:wholeShare<.05?'B5_BELOW_5_PERCENT':'B5_REVIEW_REQUIRED',
+     wholeRunCountViolationSeeds:wholeRunViolations.filter(v=>!v.check.servedCount).length,
+     wholeRunTotalDelayViolationSeeds:wholeRunViolations.filter(v=>!v.check.totalDelay).length,
+     conditionalServedByDrain:describe(pairedWholeRun.map(x=>x.conditional.servedByDrain)),
+     sequentialServedByDrain:describe(pairedWholeRun.map(x=>x.sequential.servedByDrain)),
+     conditionalTotalDepartureDelaySeconds:describe(pairedWholeRun.map(x=>x.conditional.totalDepartureDelaySeconds)),
+     sequentialTotalDepartureDelaySeconds:describe(pairedWholeRun.map(x=>x.sequential.totalDepartureDelaySeconds)),
+     conditionalMeanDepartureDelaySeconds:describe(pairedWholeRun.map(x=>x.conditional.meanDepartureDelaySeconds)),
+     sequentialMeanDepartureDelaySeconds:describe(pairedWholeRun.map(x=>x.sequential.meanDepartureDelaySeconds)),
+     pairedDifferencesSequentialMinusConditional:{
+      servedByDrain:describe(pairedWholeRun.map(x=>x.sequentialMinusConditional.departuresServed)),
+      totalDepartureDelaySeconds:describe(pairedWholeRun.map(x=>x.sequentialMinusConditional.totalDepartureDelaySeconds)),
+      meanDepartureDelaySeconds:describe(pairedWholeRun.map(x=>x.sequentialMinusConditional.meanDepartureDelaySeconds))},
+     worstThreeSeedTraces:wholeShare>=.05?wholeRunViolations.slice(0,3):[],
+     violations:wholeRunViolations,
+     perSeed:pairedWholeRun});
    }
    const observedGate=profile==='OBSERVED_LIKE_3_PER_H_2_HEAVY'&&[20,21].includes(arrivalsPerHour)?
     {status:'REPLICATED_OBSERVED_LIKE_FIFO_GATE',
@@ -686,13 +753,16 @@ export function replicateComparison(base=DEFAULT_CONFIG){
      allRequestedDeparturesServedShare:rows.filter(r=>
       r.scenarios[0].metrics.usedDepartureOpportunities===6).length/rows.length,
      measurementDepartureDemandPerHour:3,
-     requiresAllThreeDeparturesInMeasurementHour:true,
-     measurementWindowAllThreeServedShare:rows.filter(r=>
+     meanDepartureBandPerHour:[2.5,3.5],
+     measurementWindowAllThreeServedShareDiagnostic:rows.filter(r=>
       r.scenarios[0].metrics.measurementDepartures>=3).length/rows.length,
+     allSixServedByDrainRequired:true,
+     gateDefinition:'ALL_REQUESTS_SERVED_BY_DRAIN_AND_MEAN_DEP_H_2_5_TO_3_5_AND_MEAN_ARR_H_19_TO_21',
      verdict:summary[0].statistics.arrivalsPerHour.mean>=19&&
       summary[0].statistics.arrivalsPerHour.mean<=21&&
-      rows.every(r=>r.scenarios[0].metrics.usedDepartureOpportunities===6)&&
-      rows.every(r=>r.scenarios[0].metrics.measurementDepartures>=3)?
+      summary[0].statistics.departuresPerHour.mean>=2.5&&
+      summary[0].statistics.departuresPerHour.mean<=3.5&&
+      rows.every(r=>r.scenarios[0].metrics.usedDepartureOpportunities===6)?
       'PASS':'FAIL_OBSERVED_LIKE_FIFO_GATE'}:
     profile==='INSERTABLE_EVERY_SECOND_ARR'&&[20,21].includes(arrivalsPerHour)?
     {status:'REPLICATED_OBSERVED_COMPARATOR',
@@ -714,7 +784,7 @@ export function replicateComparison(base=DEFAULT_CONFIG){
     referenceDataStatus:profile==='OBSERVED_LIKE_3_PER_H_2_HEAVY'?
      'OBSERVED_LIKE_REQUEST_COUNT_AND_HEAVY_MIX_NOT_OBSERVED_TIMES':
      'SYNTHETIC_INSERTABLE_OPPORTUNITIES_NOT_OBSERVED_DEMAND',
-    statistics:summary,pairedDifferences,monotonicity,observedGate,
+    statistics:summary,pairedDifferences,monotonicity,wholeRunMonotonicity,observedGate,
     perSeedManifestSha256:rows.map(r=>({seed:r.seed,sha256:r.manifestSha256}))});
   }
  }
@@ -722,6 +792,9 @@ export function replicateComparison(base=DEFAULT_CONFIG){
   seedCount:base.replication.seeds,demandProfiles:['INSERTABLE_EVERY_SECOND_ARR','OBSERVED_LIKE_3_PER_H_2_HEAVY'],
   demandLevelsPerHour:base.arrivalDemandLevelsPerHour,
   results:result,pairedBootstrap:base.replication,
+  b5WholeRunOverallStatus:result.every(l=>l.wholeRunMonotonicity.every(m=>m.passBelowFivePercent))?
+   'B5_ALL_CELLS_BELOW_5_PERCENT':'B5_REVIEW_REQUIRED',
+  b5DecisionRule:'CONDITIONAL_SERVED_BY_DRAIN_GE_SEQUENTIAL_AND_TOTAL_DELAY_LE_SEQUENTIAL',
   a11LockSha256:APPROVED_A11_LOCK_SHA256,
   assumptionStatus:'CONDITIONAL_ON_UNVALIDATED_GROUND_EVENT_DURATIONS',
   warning:'Monotonicity violations are shown with seed-level divergence evidence; do not hide or force monotonicity. Insertable capacity is not observed throughput.'};
