@@ -546,7 +546,8 @@ const MEASURES=[
  ['arrivalsPerHour',s=>s.metrics.arrivalRatePerHour],
  ['departuresPerHour',s=>s.metrics.departureRatePerHour],
  ['missedDepartureOpportunities',s=>s.metrics.missedDepartureOpportunities],
- ['meanArrivalDelaySeconds',s=>s.metrics.arrivalDelaySeconds.mean]
+ ['meanArrivalDelaySeconds',s=>s.metrics.arrivalDelaySeconds.mean],
+ ['meanDepartureDelaySeconds',s=>s.metrics.departureDelaySeconds.mean]
 ];
 function describe(xs){
  const finite=xs.filter(Number.isFinite);
@@ -675,9 +676,14 @@ export function replicateComparison(base=DEFAULT_CONFIG){
       (r.scenarios[0].metrics.departureDelaySeconds.mean??0),0)/rows.length,
      allRequestedDeparturesServedShare:rows.filter(r=>
       r.scenarios[0].metrics.usedDepartureOpportunities===6).length/rows.length,
+     measurementDepartureDemandPerHour:3,
+     requiresAllThreeDeparturesInMeasurementHour:true,
+     measurementWindowAllThreeServedShare:rows.filter(r=>
+      r.scenarios[0].metrics.measurementDepartures>=3).length/rows.length,
      verdict:summary[0].statistics.arrivalsPerHour.mean>=19&&
       summary[0].statistics.arrivalsPerHour.mean<=21&&
-      rows.every(r=>r.scenarios[0].metrics.usedDepartureOpportunities===6)?
+      rows.every(r=>r.scenarios[0].metrics.usedDepartureOpportunities===6)&&
+      rows.every(r=>r.scenarios[0].metrics.measurementDepartures>=3)?
       'PASS':'FAIL_OBSERVED_LIKE_FIFO_GATE'}:
     profile==='INSERTABLE_EVERY_SECOND_ARR'&&[20,21].includes(arrivalsPerHour)?
     {status:'REPLICATED_OBSERVED_COMPARATOR',
