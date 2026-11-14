@@ -42,6 +42,10 @@ const summary=comparison.cases.map(x=>({
  gateChanges:x.gateSummaries.candidate.change40ByOrderS,
  sameExitPairs:x.gateSummaries.candidate.sameExitPairs,
  evaluablePairs:x.gateSummaries.candidate.evaluableSameExitPairs,
+ comparableWithin180:x.gateSummaries.candidate.within180SecondsComparablePopulation,
+ observedGTQSharePercent:x.exitMixAudit.observedPercent.GTQ,
+ realisedGTQSharePercent:x.exitMixAudit.syntheticPercent.GTQ,
+ syntheticTPSharePercent:x.typeMixAudit.syntheticTPSharePercent,
  anySwap:x.acceptance.anySwap,allConserved:x.acceptance.allConserved}));
 console.log(canonical({commitSha:sha,candidateSha256:digest(payload),
  a11LockSha256:A11_LOCK_SHA256,mainBaseSha:config.mainBaseSha,
