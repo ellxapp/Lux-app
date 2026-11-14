@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {digest} from '../core.mjs';
 
-export const VERSION='A1.3-initial-type-exit-candidate-1';
+export const VERSION='A1.3-C1-bunched-ready-candidate-2';
 export const CONFIG=Object.freeze(JSON.parse(readFileSync(new URL('./MECHANICS_ONLY.json',import.meta.url),'utf8')));
 const LOCK='be55a9622ce770ea0f66bfdcc6d582f53948577c8e1f4bb4ffda72a7026a85fb';
 const lockSha=createHash('sha256').update(readFileSync(new URL('../a11/calibration-lock.json',import.meta.url))).digest('hex');
@@ -30,6 +30,18 @@ export function validateConfig(c){
  check(c.replication.seeds>=50&&c.replication.seeds<=500,'50 or more fixed seeds');
  check(c.gate.definitions.length===2&&c.gate.definitions[0].distanceNM===30&&
   c.gate.definitions[1].distanceNM===40&&c.gate.exitFixCoordinates===null,'30/40 NM radial proxy only');
+ check(c.observed.takeoffIntervals?.gate?.medianAbsToleranceSeconds===30&&
+  c.observed.takeoffIntervals.gate.shareLE120AbsoluteTolerancePercentagePoints===10,
+  'observed interval gate must be fixed');
+ for(const k of ['early','late']){
+  const p=c.readyTimeProcess[k];
+  check(p&&p.singleFraction>=0&&p.singleFraction<1&&p.tripleFraction>=0&&
+   p.tripleFraction<1&&p.singleFraction+p.tripleFraction<1&&
+   Number.isSafeInteger(p.withinClusterGapMs)&&p.withinClusterGapMs>=0&&
+   p.centerJitterFraction>=0&&p.centerJitterFraction<=.4,'bunch parameters');
+ }
+ check(JSON.stringify(c.fittedSpeedContrast.jetAnchorSensitivityKt)==='[260,300,340]',
+  'fixed three anchor sensitivity values');
  check(c.boundaries.lvp===false&&c.boundaries.ctotAtfm==='NOT_MODELLED','LVP and CTOT excluded');
  const shares=Object.values(c.observed.exitSharesPercent);
  check(shares.every(v=>v>=0)&&shares.reduce((a,b)=>a+b,0)===100,'exit share must include 2% residual');
@@ -38,19 +50,19 @@ export function validateConfig(c){
  }
  return c;
 }
-export function fittedSpeedContrast(c=CONFIG){
+export function fittedSpeedContrast(c=CONFIG,jetAnchorKt=c.fittedSpeedContrast.jetAnchorKt){
  validateConfig(c);
  const obs=c.fittedSpeedContrast,targetA=obs.targetTPJetChangeSeconds,targetB=obs.targetJetTPChangeSeconds;
  // At the same 40 NM radial ring, symmetric type-pair gaps constrain only
  // delta travel time. Absolute jet speed is NOT identified by this aggregate.
  const contrastSeconds=(targetB-targetA)/2;
- const jet=obs.jetAnchorKt;check(jet>0,'jet anchor');
+ const jet=jetAnchorKt;check(jet>0,'jet anchor');
  const tp=40/(40/jet+contrastSeconds/3600);
  check(tp>0&&tp<jet,'TP speed must be lower than jet anchor');
  const predictions={'TP-J':-contrastSeconds,'J-TP':contrastSeconds,'J-J':0};
  return {gateNM:40,jetKt:jet,tpKt:tp,
   speedRatioTPOverJet:tp/jet,
-  identifiability:'ONE_FITTED_TRAVEL_TIME_CONTRAST_PLUS_HYPOTHETICAL_300KT_JET_ANCHOR',
+  identifiability:'ONE_FITTED_TRAVEL_TIME_CONTRAST_PLUS_HYPOTHETICAL_JET_SPEED_ANCHOR',
   status:'FITTED_TO_SEP2026_DEV_CHANGE_MEDIANS_CONDITIONAL_ON_ANCHOR',
   observedSeconds:structuredClone(c.observed.gate40TimeGapChangeMedianSeconds),
   modelSeconds:predictions,
@@ -79,15 +91,41 @@ function typeCategory(q,c){
  const jetPart=(q-c.fleet.turbopropShare)/(1-c.fleet.turbopropShare);
  return jetPart<c.fleet.heavyJetShareWithinJets?'HEAVY_JET':'JET';
 }
+export function bunchedReadyTimes(c,seed,count,backgroundArrivalsPerHour){
+ validateConfig(c);
+ const wave=backgroundArrivalsPerHour===1?'early':'late',p=c.readyTimeProcess[wave];
+ const next=xorshift((seed^0x9e3779b9)>>>0);
+ const clusters=[];
+ for(let i=0;i<count;){
+  const sizeDraw=next(),size=sizeDraw<p.singleFraction?1:
+   sizeDraw<p.singleFraction+p.tripleFraction?3:2;
+  const n=Math.min(size,count-i);
+  clusters.push({size:n,jitter:next()-.5});
+  i+=n;
+ }
+ const totalMs=c.demand.durationHours*H,span=totalMs/clusters.length;
+ const times=[];
+ for(let i=0;i<clusters.length;i++){
+  const group=clusters[i],center=(i+.5)*span+
+   group.jitter*2*span*p.centerJitterFraction;
+  for(let j=0;j<group.size;j++){
+   const within=(j-(group.size-1)/2)*p.withinClusterGapMs;
+   times.push(Math.max(0,Math.round(center+within)));
+  }
+ }
+ return {times:times.sort((a,b)=>a-b),wave,clusters:clusters.length,
+  parameters:{...p},source:'FITTED_TO_SEP2026_TAKEOFF_INTERVALS'};
+}
 export function makeManifest(c=CONFIG,{seed=c.replication.seedStart,departuresPerHour=16,backgroundArrivalsPerHour=1}={}){
  validateConfig(c);integer(seed,'seed');
  check(c.demand.departureLevelsPerHour.includes(departuresPerHour),'unknown departure demand rate');
  check(c.demand.backgroundArrivalsPerHour.includes(backgroundArrivalsPerHour),'unknown arrival regime');
  const rnd=xorshift(seed),deps=[],arr=[];
- const depStep=H/departuresPerHour,arrStep=H/backgroundArrivalsPerHour;
+ const arrStep=H/backgroundArrivalsPerHour;
+ const ready=bunchedReadyTimes(c,seed,departuresPerHour*c.demand.durationHours,backgroundArrivalsPerHour);
  for(let i=0;i<departuresPerHour*c.demand.durationHours;i++){
   const type=typeCategory(rnd(),c),exit=exitQuant(rnd(),c.observed.exitSharesPercent);
-  const requestMs=Math.round((i+.5)*depStep+(rnd()-.5)*2*depStep*c.demand.departureJitterFraction);
+  const requestMs=ready.times[i];
   const missingGate=rnd()<c.gate.missingCrossingProbability;
   deps.push({id:'D'+String(i).padStart(3,'0'),kind:'DEP',originalIndex:i,
    requestMs,category:type,wake:type==='HEAVY_JET'?'H':'M',exit,
@@ -101,7 +139,9 @@ export function makeManifest(c=CONFIG,{seed=c.replication.seedStart,departuresPe
    requestMs:Math.round((i+.5)*arrStep+(rnd()-.5)*2*arrStep*c.demand.arrivalJitterFraction),
    sourceStatus:'SYNTHETIC_BACKGROUND_ARRIVAL_NOT_REPLAY'});
  return {schema:13,synthetic:true,seed,departuresPerHour,backgroundArrivalsPerHour,
-  departures:deps,arrivals:arr,exitWeightsSource:'SEP2026_POOLED_EXIT_SHARES',
+  departures:deps,arrivals:arr,readyTimeProcess:{wave:ready.wave,clusters:ready.clusters,
+   source:ready.source,parameters:ready.parameters},
+  exitWeightsSource:'SEP2026_POOLED_EXIT_SHARES',
   provenance:'ALL_REQUESTS_SYNTHETIC_AND_IMMUTABLE',a11LockSha256:LOCK};
 }
 export function validateManifest(m,c=CONFIG){
@@ -124,7 +164,7 @@ export function validateManifest(m,c=CONFIG){
 }
 function profile(category,fit){
  return category==='TURBOPROP'?{meanGroundspeedKt:fit.tpKt,source:'FITTED_CONTRAST_CONDITIONAL_ON_ANCHOR'}:
-  {meanGroundspeedKt:fit.jetKt,source:'HYPOTHETICAL_300KT_JET_ANCHOR'};
+  {meanGroundspeedKt:fit.jetKt,source:'HYPOTHETICAL_JET_SPEED_ANCHOR'};
 }
 export function gateCrossings(dep,airborneMs,c=CONFIG,fit=fittedSpeedContrast(c)){
  const p=profile(dep.category,fit),crossings={};
@@ -156,11 +196,12 @@ function orderWithSwaps(deps,indices){
  for(const i of indices)[arr[i],arr[i+1]]=[arr[i+1],arr[i]];
  return arr;
 }
-export function simulate(m,c=CONFIG,{policy='FIFO',preset='CURRENT'}={}){
+export function simulate(m,c=CONFIG,{policy='FIFO',preset='CURRENT',
+ jetAnchorKt=c.fittedSpeedContrast.jetAnchorKt}={}){
  validateConfig(c);validateManifest(m,c);
  check(['FIFO','TYPE_EXIT_ONE_SWAP'].includes(policy),'policy');
  check(Object.hasOwn(c.intervalPresets,preset),'preset');
- const fit=fittedSpeedContrast(c),p=c.intervalPresets[preset];
+ const fit=fittedSpeedContrast(c,jetAnchorKt),p=c.intervalPresets[preset];
  const baselineOrder=m.departures,eligible=policy==='FIFO'?[]:chooseSwaps(m,c);
  const run=(indices)=>{
   const sorted=orderWithSwaps(baselineOrder,indices),rows=[],arrivals=[],events=[];
@@ -249,7 +290,8 @@ export function simulate(m,c=CONFIG,{policy='FIFO',preset='CURRENT'}={}){
   return {meta:{version:VERSION,policy,preset,seed:m.seed,
    mainBaseSha:c.mainBaseSha,manifestSha256:digest(m),configSha256:digest(c),
    modelStatus:'MECHANICS_ONLY_UNVALIDATED',ctotAtfm:'NOT_MODELLED',
-   radialGateInterpretation:'SYNTHETIC_TIME_PROXY_NOT_EXIT_FIX_GEOMETRY'},
+   radialGateInterpretation:'SYNTHETIC_TIME_PROXY_NOT_EXIT_FIX_GEOMETRY',
+   jetAnchorKt,readyWave:m.readyTimeProcess?.wave??null},
    totals:{requests:counted,served:served.length+allServedArr.length,
     censored:rows.filter(x=>x.status==='censored').length+arrivals.filter(x=>x.status==='censored').length,
     departedByDrain:served.length,arrivalRequests:arrivals.length},
@@ -295,8 +337,9 @@ export function simulate(m,c=CONFIG,{policy='FIFO',preset='CURRENT'}={}){
  }), 'unvalidated 120s extra delay exceeded');
  return {...runResult,eligibleSwapCount:eligible.length,rejectedSwapCount:eligible.length-swaps.length};
 }
-export function comparePair(m,c=CONFIG,{preset='CURRENT'}={}){
- const fifo=simulate(m,c,{policy:'FIFO',preset}),candidate=simulate(m,c,{policy:'TYPE_EXIT_ONE_SWAP',preset});
+export function comparePair(m,c=CONFIG,{preset='CURRENT',
+ jetAnchorKt=c.fittedSpeedContrast.jetAnchorKt}={}){
+ const fifo=simulate(m,c,{policy:'FIFO',preset,jetAnchorKt}),candidate=simulate(m,c,{policy:'TYPE_EXIT_ONE_SWAP',preset,jetAnchorKt});
  check(fifo.meta.manifestSha256===candidate.meta.manifestSha256,'paired manifest mismatch');
  return {manifestSha256:digest(m),fifo,candidate};
 }
