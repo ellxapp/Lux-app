@@ -127,9 +127,18 @@ export function feasibility(c=DEFAULT_CONFIG,sequence=CONDITIONAL,category='MEDI
  const dep=timeline(0,0,category,sequence,c);
  const fp=profileFor(followerType,0);
  const distancePlanningMs=timeToGoMs(c.distancePlanningNM[category]*NM,fp);
- const minimumFeasibleS=dep.requiredGapMs/1000;
+ // The representative ARR–ARR safety floor remains independent of the
+ // intervening departure. It may dominate the time-based minimum.
+ const representativeLeader={type:'B738',wake:'M',headwindKt:0};
+ const representativeFollower={type:followerType,
+  wake:followerType==='PC12'?'L':'M',headwindKt:0};
+ const arrivalHardFloorMs=minArrivalThresholdGapMs(representativeLeader,representativeFollower,c);
+ const minimumFeasibleS=Math.max(dep.requiredGapMs,arrivalHardFloorMs)/1000;
  return {sequence,category,followerType,status:minimumFeasibleS<=observed.intP10S?'PASS':'MECHANICS_NOT_SUPPORTED_BY_OBSERVED_P10',
-  modelMinimumS:minimumFeasibleS,referenceP10S:observed.intP10S,referenceMedianS:observed.intMedianS,
+  modelMinimumS:minimumFeasibleS,departurePhysicalMinimumS:dep.requiredGapMs/1000,
+  arrivalHardMinimumS:arrivalHardFloorMs/1000,
+  assumedLeaderType:'B738',assumedLeaderWake:'M',
+  referenceP10S:observed.intP10S,referenceMedianS:observed.intMedianS,
   referencePairs:observed.nPairs,distancePlanningEquivalentS:distancePlanningMs/1000,
   holdoutP10S:c.reference.holdoutReportOnly[group].intP10S,
   holdoutPairs:c.reference.holdoutReportOnly[group].nPairs,
