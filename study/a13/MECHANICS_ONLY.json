@@ -9,7 +9,8 @@
     6877178756,
     6877190634,
     6877231875,
-    "pullrequestreview-5905137012"
+    "pullrequestreview-5905137012",
+    "pullrequestreview-5907827059"
   ],
   "mainBaseSha": "3deafff1f20d1f2218f38c07cec53e43a0dd88ab",
   "observed": {
@@ -94,7 +95,8 @@
         "shareLE120AbsoluteTolerancePercentagePoints": 10,
         "scope": "DEVELOPMENT_ONLY_POOLED_CURRENT_FIFO_MEASURED_HOUR_BY_WAVE_ACROSS_FOUR_DEMAND_LEVELS_50_SEEDS",
         "status": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS",
-        "sameExitShare": "REPORT_ONLY_NO_HARD_TOLERANCE"
+        "sameExitShare": "REPORT_ONLY_NO_HARD_TOLERANCE",
+        "observationOperator": "FLOOR_EACH_ABSOLUTE_TAKEOFF_TIMESTAMP_TO_UTC_MINUTE_BEFORE_DIFFERENCE"
       }
     }
   },
@@ -211,42 +213,45 @@
   },
   "readyTimeProcess": {
     "kind": "BUNCHED_WAVE_READY_TIMES",
-    "status": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS",
+    "status": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT",
     "calibration": "DETERMINISTIC_GRID_SEARCH_ON_PUBLISHED_AGGREGATES_NO_RAW_MOVEMENT_RECORDS",
     "early": {
-      "singleFraction": 0,
-      "tripleFraction": 0.24,
-      "withinClusterGapMs": 30000,
-      "centerJitterFraction": 0
-    },
-    "late": {
-      "singleFraction": 0.24,
+      "singleFraction": 0.12,
       "tripleFraction": 0.12,
       "withinClusterGapMs": 60000,
       "centerJitterFraction": 0.1
     },
+    "late": {
+      "singleFraction": 0.24,
+      "tripleFraction": 0,
+      "withinClusterGapMs": 90000,
+      "centerJitterFraction": 0
+    },
     "restrictions": "Synthetic requests, not observed taxi-ready/clearance/CTOT timestamps",
     "queueReadyDefinition": "Request time means synthetic runway-ready time; departures wait if runway occupied.",
     "fitAudit": {
-      "sourceReview": "pullrequestreview-5905137012",
-      "sourceStatus": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS",
+      "sourceReview": "pullrequestreview-5907827059",
+      "sourceStatus": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS_NO_HOLDOUT",
+      "observedOperator": "FLOOR_EACH_ABSOLUTE_TAKEOFF_TIMESTAMP_TO_UTC_MINUTE_BEFORE_DIFFERENCE",
       "calibrationDevelopmentSeeds": 12,
       "gridCombinationsPerWave": 120,
       "objective": "|median residual|/30 + |share <=120 residual pp|/10 + 0.1*|P90 residual|/180",
       "earlyFit": {
-        "medianS": 115,
-        "shareLE120": 0.5101522842639594,
-        "p90S": 384.285,
-        "loss": 0.18168117597292746
+        "medianS": 120,
+        "shareLE120": 0.5105820105820106,
+        "p10S": null,
+        "p90S": 360,
+        "loss": 0.005820105820105725
       },
       "lateFit": {
-        "medianS": 184.075,
-        "shareLE120": 0.3783422459893048,
-        "p90S": 360.04690000000016,
-        "loss": 0.1857181512180624
+        "medianS": 180,
+        "shareLE120": 0.3801324503311258,
+        "p10S": null,
+        "p90S": 360,
+        "loss": 0.03465783664459133
       },
-      "verification": "RUN_ALL_50_SEEDS_SEPARATELY; NO_SEALED_DEPARTURE_HOLDOUT",
-      "warning": "This fits take-off interval aggregates using synthetic runway scheduling, not unobserved runway ready-times or independent external validation."
+      "verification": "RUN_ALL_50_SEEDS; 12 INCLUDED_IN_FIT; NOT_A_HOLDOUT",
+      "warning": "Ready-time parameters inferred from whole-minute take-off interval aggregates, not independently observed runway-ready times. No separate departure holdout."
     }
   }
 }
