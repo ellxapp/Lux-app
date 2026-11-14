@@ -2,6 +2,8 @@
 // The target represents EQUIVALENT TRACK DISTANCE TO GO when leader crosses,
 // not a literal final-intercept location or an identified controller instruction.
 import {digest,canonical} from '../core.mjs';
+import {readFileSync} from 'node:fs';
+export const SEP2026_FITTED=Object.freeze(JSON.parse(readFileSync(new URL('./SEP2026_FITTED.json',import.meta.url),'utf8')));
 import {observeDay,stats,stratumPairs,hardMetrics,quantileType7,CAPTURE_DIGEST} from './observation.mjs';
 
 export const A11_MODEL_VERSION='A1.1-candidate-1';
@@ -85,9 +87,7 @@ export function makeScenarioManifest({seed=20261114,days=140,perDay=56}={}){
 export function wakeFloorNM(leader,follower){
  const allowed=['H','M','L'];
  if(!allowed.includes(leader)||!allowed.includes(follower))throw Error('unsupported wake / Super');
- if(leader==='H')return follower==='H'?4:follower==='M'?5:6;
- if(leader==='M'&&follower==='L')return 5;
- return 3;
+ return SEP2026_FITTED.wakeNM[leader]?.[follower]??SEP2026_FITTED.surveillanceNM;
 }
 export function parameterCheck(p){
  if(!p||p.mu.length!==3)throw Error('parameters required');
@@ -127,7 +127,7 @@ export function runAssignedManifest(manifest){
    const base=fl[i],lead=arrivals.at(-1);
    if(lead&&(!Number.isSafeInteger(base.effectiveTargetM)||base.effectiveTargetM<=0))throw Error('immutable effectiveTargetM missing');
    const requestedNM=lead?base.effectiveTargetM/NM:null;
-   const minNM=lead?Math.max(3,wakeFloorNM(lead.wake,base.wake)):0;
+   const minNM=lead?Math.max(SEP2026_FITTED.surveillanceNM,wakeFloorNM(lead.wake,base.wake)):0;
    const effectiveNM=lead?Math.max(requestedNM,minNM):null;
    const followerProfile=profileFor(base.type,base.headwindKt);
    let intervalMs=lead?Math.max(80000,timeToGoMs(effectiveNM*NM,followerProfile)):0;
@@ -170,7 +170,7 @@ export function evaluateSynthetic(manifest,params){
   targets:m.numberTargets,raiseFraction:m.raiseFraction,maxRaiseM:m.maxRaiseM},
   meta:{modelVersion:A11_MODEL_VERSION,targetMeaning:TARGET_MEANING,capture:'CAPTURE_EMPIRICAL_SEP2026_DEV',
    captureDigest:CAPTURE_DIGEST,manifestSha256:m.manifestSha256,materializedDigest:m.materializedDigest,
-   syntheticDays:manifest.days,syntheticFlights:manifest.days*manifest.perDay,source:'FITTED_SYNTHETIC'}};
+   syntheticDays:manifest.days,syntheticFlights:manifest.days*manifest.perDay,preset:SEP2026_FITTED.preset,source:'FITTED_SYNTHETIC'}};
 }
 export function scoreModel(output,benchmark){
  const measures=hardMetrics(benchmark),errors=measures.map(m=>{
@@ -178,7 +178,7 @@ export function scoreModel(output,benchmark){
   return {...m,actual,normalised:Number.isFinite(actual)?Math.abs(actual-m.target)/m.tolerance:Infinity};
  });
  return {maxNormalisedError:Math.max(...errors.map(x=>x.normalised)),hardMetrics:errors,
-   fitNotRepresentable:output.totals.raiseFraction>.05};
+   fitNotRepresentable:output.totals.raiseFraction>SEP2026_FITTED.hardFloorRaiseLimitFraction};
 }
 export function fitDevelopment(benchmark,{seed=20261114,days=140,perDay=56,maxRounds=24}={}){
  if(benchmark.status!=='OBSERVED_AGGREGATE_DEV'||benchmark.strata.length!==8||
