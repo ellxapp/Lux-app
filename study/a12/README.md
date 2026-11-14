@@ -183,14 +183,49 @@ A gate pass does not certify local procedures or runway capacity.
 The unchanged core-queue saturated-arrival-only diagnostic (~24 ARR/h)
 is also reported separately from Claude's approximate ~22/h expectation.
 
+## B4: incremental delay and persistent FIFO departures
+
+Claude's PR #3 review 5903407826 identified the cumulative arrival-delay
+release gate as the cause of implausible nonmonotonicity and lost departures.
+For each follower, first calculate its **no-departure** threshold time using
+the selected locked A1.1 delivered-spacing target. A waiting departure may
+be released only if `candidateFollowerThreshold − noDepartureFollowerThreshold
+≤ maxIncrementalArrivalDelayMs`. The default 90 seconds is an
+**UNVALIDATED** scenario setting, not an ELLX clearance or delay limit.
+Cumulative arrival delay from the original request remains reported, but
+is **never** a release veto.
+
+Unreleased departures remain in a strict **FIFO queue** and are retried in
+subsequent available arrival gaps. Later requests cannot bypass a waiting
+head-of-line departure. A request is not counted as missed on a failed
+gap check; only requests left after the declared drain horizon are censored.
+After the last ARR, the synthetic drain can release waiting departures in
+FIFO order with runway-occupancy protection, and counts these separately
+from the one-hour measurement window. Departure delay is measured from its
+original request to airborne, including queue holding and drain. No
+modelled after-last-arrival drain release is retroactively credited to
+the observed peak hour.
+
+The **revised observed-like gate** evaluates 20 and 21 ARR/hour demand,
+about 20 modelled ARR/hour, and whether all three nominal hourly
+departures (two heavy) are served, while reporting both the one-hour
+measurement count and the full two-hour-plus-drain completion rate. It
+also reports mean departure delay. A failure is **reported as a failure**;
+parameters are not fitted to make the aggregate observation match.
+
+Monotonicity checks and all B3 50-seed paired intervals are rerun, with
+individual seed traces for every remaining exception. The model remains
+**mechanics only**; source runway-event timings and synthetic departure
+requests are not observed records.
+
 ## Scope and limitations
 
 One DEP opportunity per selected adjacent ARR pair; no multi-runway
 intersection modelling, runway-entry taxi physics, controller workload,
 taxi queue, departure-to-departure constraints, capacity declaration
-or movement-file replay. A requested departure that cannot fit without
-exceeding the configured maximum ARR deferral is counted as a
-missed/censored opportunity. Every arrival-only pair retains the locked A1.1
+or movement-file replay. A requested departure that exceeds the incremental ARR-delay ceiling
+waits in FIFO order for the next gap and is not lost. Only a departure
+still outstanding at the declared drain horizon is censored. Every arrival-only pair retains the locked A1.1
 spacing requirement, independent of acceptance of departures. Physical and planning slack are recorded
 separately. Per-flight aircraft and requested-event times are generated
 synthetically. This is a first candidate for independent review, not
