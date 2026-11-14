@@ -6,6 +6,7 @@ import {captureProbability,captureDistance,isBusyArrival,classifyRegime,typeFami
 import {profileFor,timeToGoMs,makeScenarioManifest,wakeFloorNM,materialize,assignEffectiveTargets,runAssignedManifest,minimumCommonFinalNM,evaluateSynthetic,
   scoreModel,fitDevelopment} from './model.mjs';
 import {validateHoldout} from './validate.mjs';
+import {compare2018,EUROCONTROL_2018_REFERENCE} from './2018.mjs';
 import {canonical,digest} from '../core.mjs';
 const benchmark=JSON.parse(readFileSync(new URL('../benchmarks/sep2026-dev-busy12.json',import.meta.url),'utf8'));
 const SHA='0123456789abcdef0123456789abcdef01234567';
@@ -141,4 +142,20 @@ test('different type trajectories retain 3NM common-final floor',()=>{
  assert.ok(result.floorRaised>0);
  for(const day of result.days)for(const arr of day.arrivals.slice(1))
   assert.ok(arr.minimumCommonFinalNM>=3-1e-6);
+});
+
+test('2018 reference distinguishes observed/optimal technical capacities and unit types',()=>{
+ const aa=compare2018({mode:'AA',runway:'24',syntheticRate:32,capacityEligible:false,matchedMode:true});
+ assert.equal(aa.observedTechnical,21.3);
+ assert.equal(aa.optimalTechnical,24.2);
+ assert.equal(aa.measure,'ARRIVALS_PER_HOUR');
+ assert.equal(aa.comparison,'NOT_COMPARABLE');
+ assert.equal(aa.deltaObserved,null);
+ assert.equal(aa.illustrativeArithmeticDeltaObserved,10.7);
+ const ada=compare2018({mode:'ADA',runway:'24',syntheticRate:32,capacityEligible:true,matchedMode:false});
+ assert.equal(ada.measure,'MOVEMENTS_PER_HOUR');
+ assert.equal(ada.observedTechnical,26.5);
+ assert.equal(ada.optimalTechnical,34.64);
+ assert.equal(ada.comparison,'NOT_COMPARABLE');
+ assert.equal(EUROCONTROL_2018_REFERENCE.metrics.DD['06'].optimal,29.6);
 });
