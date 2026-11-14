@@ -25,6 +25,8 @@ const report={schema:1,status:'A12_MECHANICS_ONLY_UNVALIDATED',commitSha:sha,dir
  overallObservedValidityStatus:result.overallObservedValidityStatus,
  saturatedArrivalOnly:result.saturatedArrivalOnly,
  replicated,replicationSeedCount:replicated.seedCount,
+ b5WholeRunOverallStatus:replicated.b5WholeRunOverallStatus,
+ b5DecisionRule:replicated.b5DecisionRule,
  resultCategory:'INSERTABLE_CAPACITY_OR_OBSERVED_LIKE_DEMAND_CONDITIONAL_NOT_OPERATIONAL',
  config:cfg,referenceStatuses:{development:'OBSERVED_AGGREGATE_DEV_NOT_FIT',
  holdout:'REPORT_ONLY_NOT_FIT'},summary:{
@@ -52,11 +54,25 @@ const serial=canonical(report);
 writeFileSync(output,serial,'utf8');
 const shortRep=replicated.results.map(x=>({profile:x.profile,demand:x.arrivalsPerHour,
  n:x.seedCount,observedGate:x.observedGate,statistics:x.statistics,
- pairedDifferences:x.pairedDifferences,monotonicity:x.monotonicity.map(m=>({
+ pairedDifferences:x.pairedDifferences,
+ wholeRunMonotonicity:x.wholeRunMonotonicity.map(m=>({
+  policy:m.policy,n:m.n,violatingSeeds:m.violatingSeeds,shareViolating:m.shareViolating,
+  status:m.status,wholeRunCountViolationSeeds:m.wholeRunCountViolationSeeds,
+  wholeRunTotalDelayViolationSeeds:m.wholeRunTotalDelayViolationSeeds,
+  conditionalServedByDrain:m.conditionalServedByDrain,
+  sequentialServedByDrain:m.sequentialServedByDrain,
+  conditionalTotalDepartureDelaySeconds:m.conditionalTotalDepartureDelaySeconds,
+  sequentialTotalDepartureDelaySeconds:m.sequentialTotalDepartureDelaySeconds,
+  conditionalMeanDepartureDelaySeconds:m.conditionalMeanDepartureDelaySeconds,
+  sequentialMeanDepartureDelaySeconds:m.sequentialMeanDepartureDelaySeconds,
+  pairedDifferencesSequentialMinusConditional:m.pairedDifferencesSequentialMinusConditional,
+  worstThreeSeedTraces:m.worstThreeSeedTraces})),
+ monotonicity:x.monotonicity.map(m=>({
   policy:m.policy,violatingSeeds:m.violatingSeeds,shareSequentialHigher:m.shareSequentialHigher,flag:m.flag,
   violatingSeedIds:m.violations.map(v=>v.seed)}))}));
 console.log(canonical({replicationSeedCount:replicated.seedCount,
  replicationSummary:shortRep,resultCategory:report.resultCategory,
+ b5WholeRunOverallStatus:report.b5WholeRunOverallStatus,
  output,commitSha:sha,status:report.status,
  candidateSha256:digest(serial),a11LockSha256:A11_SPACING_PROVENANCE.lockSha256,
  overallObservedValidityStatus:report.overallObservedValidityStatus,
