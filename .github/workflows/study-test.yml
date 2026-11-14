@@ -52,6 +52,8 @@ jobs:
           path: /tmp/a12-first-candidate.json
           retention-days: 14
           if-no-files-found: error
+      - name: A1.3 dev-only takeoff interval fit search (never change config)
+        run: node study/a13/fit-ready-cli.mjs
       - name: A1.3 departure sequencing candidate (synthetic)
         run: node study/a13/cli.mjs --out /tmp/a13-first-candidate.json
       - name: Export A1.3 candidate (non-operational)
