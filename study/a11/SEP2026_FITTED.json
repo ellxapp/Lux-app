@@ -28,8 +28,65 @@
   "capture": "CAPTURE_EMPIRICAL_SEP2026_DEV",
   "captureBasedOn": "approved empirical interval-bin counts, including non-final vectoring; not geometrical final intercept",
   "typeMix": {
-    "turbopropProbability": 0.29,
-    "independentTypes": true
+    "source": "PUBLISHED_SPEED_SAMPLES_6868718102",
+    "sampling": "independent_frequency_weights",
+    "total": 1851,
+    "weights": [
+      {
+        "family": "B737NG_MAX",
+        "type": "B738",
+        "count": 474,
+        "wake": "M"
+      },
+      {
+        "family": "DH8D",
+        "type": "DH8D",
+        "count": 393,
+        "wake": "M"
+      },
+      {
+        "family": "E295",
+        "type": "E295",
+        "count": 150,
+        "wake": "M"
+      },
+      {
+        "family": "A320",
+        "type": "A320",
+        "count": 75,
+        "wake": "M"
+      },
+      {
+        "family": "E190",
+        "type": "E190",
+        "count": 64,
+        "wake": "M"
+      },
+      {
+        "family": "E75L",
+        "type": "E75L",
+        "count": 37,
+        "wake": "M"
+      },
+      {
+        "family": "HEAVY_B744_B748_B77L",
+        "type": "B744",
+        "count": 228,
+        "wake": "H"
+      },
+      {
+        "family": "OTHER_J",
+        "type": "OTHER_J",
+        "count": 388,
+        "wake": "M"
+      },
+      {
+        "family": "OTHER_TP",
+        "type": "PC12",
+        "count": 42,
+        "wake": "L"
+      }
+    ]
   },
   "typeFamily": {
     "TP": [
@@ -48,5 +105,7 @@
     "intermediateToNM": 4,
     "finalSegmentLabel": "ESTIMATED_FROM_ADSB_GS_METAR_WIND 4-2NM median, NOT stabilised final IAS"
   },
-  "hardFloorRaiseLimitFraction": 0.05
+  "hardFloorRaiseLimitFraction": 0.05,
+  "arrivalRotProxyMs": 80000,
+  "arrivalRotProxyStatus": "SYNTHETIC_UNVALIDATED_MINIMUM_THRESHOLD_INTERVAL"
 }
