@@ -100,19 +100,33 @@ const pairKey=(leader,follow)=>{
  const tp=t=>['DH8D','PC12','AT72','AT75','AT76'].includes(t);
  return (tp(leader.type)?'TP':'J')+'-'+(tp(follow.type)?'TP':'J');
 };
-export function materialize(manifest,params){
+// The generator assigns a requested effectiveTargetM once. The runner receives
+// that immutable target; it does not draw, infer or refit any target.
+export function assignEffectiveTargets(manifest,params){
  parameterCheck(params);
  if(!manifest.synthetic||manifest.schema!==11)throw Error('synthetic A1.1 manifest required');
- const muTP= Math.log(Math.max(.05,5.15-params.shift));
+ const muTP=Math.log(Math.max(.05,5.15-params.shift));
+ const flights=manifest.flights.map(day=>day.map((base,i)=>{
+  const lead=i?day[i-1]:null,key=lead?pairKey(lead,base):null;
+  const mu=key==='J-J'?params.mu[0]:key==='J-TP'?params.mu[1]:key==='TP-J'?params.mu[2]:muTP;
+  const target=lead?Math.round((params.shift+Math.exp(mu+params.sigma*base.targetNormal))*NM):null;
+  return {...base,effectiveTargetM:target,effectiveTargetSource:TARGET_MEANING};
+ }));
+ return {...manifest,flights,assignedBy:'A1.1_DISTRIBUTION_GENERATOR',distributionParametersSha256:digest(params)};
+}
+export function materialize(manifest,params){
+ return runAssignedManifest(assignEffectiveTargets(manifest,params));
+}
+export function runAssignedManifest(manifest){
+ if(!manifest.synthetic||manifest.schema!==11||manifest.assignedBy!=='A1.1_DISTRIBUTION_GENERATOR')throw Error('assigned synthetic A1.1 manifest required');
  let floorRaised=0,numberTargets=0,maxRaiseM=0;
  const days=[];
  for(const fl of manifest.flights){
   let clockMs=0;const arrivals=[];
   for(let i=0;i<fl.length;i++){
    const base=fl[i],lead=arrivals.at(-1);
-   const key=lead?pairKey(lead,base):null;
-   const mu=key==='J-J'?params.mu[0]:key==='J-TP'?params.mu[1]:key==='TP-J'?params.mu[2]:muTP;
-   const requestedNM=lead?params.shift+Math.exp(mu+params.sigma*base.targetNormal):null;
+   if(lead&&(!Number.isSafeInteger(base.effectiveTargetM)||base.effectiveTargetM<=0))throw Error('immutable effectiveTargetM missing');
+   const requestedNM=lead?base.effectiveTargetM/NM:null;
    const minNM=lead?Math.max(3,wakeFloorNM(lead.wake,base.wake)):0;
    const effectiveNM=lead?Math.max(requestedNM,minNM):null;
    const followerProfile=profileFor(base.type,base.headwindKt);
@@ -137,7 +151,7 @@ export function materialize(manifest,params){
    clockMs+=intervalMs;
    const deliveredNM=lead?distanceBeforeThresholdNM(intervalMs,followerProfile):null;
    arrivals.push({...base,requestMs:clockMs,
-     effectiveTargetM:effectiveNM===null?null:Math.round(effectiveNM*NM),
+     effectiveTargetM:base.effectiveTargetM,appliedFloorM:effectiveNM===null?null:Math.round(effectiveNM*NM),
      targetRaisedToMinimum:lead?(effectiveNM>requestedNM||deliveredNM>requestedNM+1e-8):false,
      minimumCommonFinalNM:minimumAlongPathNM,
      equivalentDistanceNM:deliveredNM,effectiveTargetSource:TARGET_MEANING,timeMs:clockMs});
