@@ -21,6 +21,8 @@ const report={schema:1,status:'A12_MECHANICS_ONLY_UNVALIDATED',commitSha:sha,dir
  version:A12_VERSION,configSha256:digest(cfg),a11Spacing:A11_SPACING_PROVENANCE,
  comparisonLabel:'CONDITIONAL_ON_UNVALIDATED_GROUND_EVENT_DURATIONS',
  demandLevelsPerHour:cfg.arrivalDemandLevelsPerHour,
+ overallObservedValidityStatus:result.overallObservedValidityStatus,
+ saturatedArrivalOnly:result.saturatedArrivalOnly,
  config:cfg,referenceStatuses:{development:'OBSERVED_AGGREGATE_DEV_NOT_FIT',
  holdout:'REPORT_ONLY_NOT_FIT'},summary:{
   levels:result.levels.map(level=>({
@@ -28,6 +30,7 @@ const report={schema:1,status:'A12_MECHANICS_ONLY_UNVALIDATED',commitSha:sha,dir
    requestedArrivals:level.requestedArrivals,
    requestedDepartureOpportunities:level.requestedDepartureOpportunities,
    lockedArrivalFloorRaising:level.lockedArrivalFloorRaising,
+   observedValidityGate:level.observedValidityGate,
    scenarios:level.scenarios.map(x=>({sequence:x.meta.sequence,policy:x.meta.policy,
     totals:x.totals,metrics:x.metrics,manifestSha256:x.meta.manifestSha256,
     a11Spacing:x.meta.a11Spacing,fullDetailDigest:digest(x)})),
@@ -44,11 +47,14 @@ const serial=canonical(report);
 writeFileSync(output,serial,'utf8');
 console.log(canonical({output,commitSha:sha,status:report.status,
  candidateSha256:digest(serial),a11LockSha256:A11_SPACING_PROVENANCE.lockSha256,
+ overallObservedValidityStatus:report.overallObservedValidityStatus,
+ saturatedArrivalOnly:report.saturatedArrivalOnly,
  comparisonLabel:report.comparisonLabel,levels:report.summary.levels.map(level=>({
   arrivalsPerHour:level.arrivalsPerHour,manifestSha256:level.manifestSha256,
   requestedArrivals:level.requestedArrivals,
   requestedDepartureOpportunities:level.requestedDepartureOpportunities,
   lockedArrivalFloorRaising:level.lockedArrivalFloorRaising,
+  observedValidityGate:level.observedValidityGate,
   scenarios:level.scenarios.map(x=>({sequence:x.sequence,policy:x.policy,
    totals:x.totals,metrics:x.metrics})),
   feasibility:level.feasibility
