@@ -373,16 +373,71 @@ export function pairedScenarios(manifest,c=DEFAULT_CONFIG){
    feasibility(c,seq,cat,cat==='TURBOPROP'?'DH8D':'B738')))],
   references:c.reference,sourceStatus:'MECHANICS_ONLY_UNVALIDATED'};
 }
+export function coreOnlySaturationDiagnostic(base=DEFAULT_CONFIG){
+ validateConfig(base);
+ // Separate stress manifest, not one of the four operational comparison cases.
+ // High synthetic arrival demand is intentional: keep the server continuously
+ // queued and measure output after the first hour's warm-up.
+ const sat=base.saturatedArrivalOnly;
+ check(sat&&sat.status==='SYNTHETIC_CORE_ONLY_UNVALIDATED'&&
+  sat.demandPerHour>=30&&sat.durationHours>=3&&sat.warmupHours>=1,
+  'invalid saturated core-only diagnostic');
+ const c={...base,arrivalCount:sat.demandPerHour*sat.durationHours,
+  arrivalRequestStepMs:Math.round(HR/sat.demandPerHour),
+  departureEvery:1000000,measurementStartMs:sat.warmupHours*HR,
+  measurementEndMs:sat.durationHours*HR,drainEndMs:(sat.durationHours+5)*HR};
+ const manifest=makeManifest(c),result=simulate(manifest,c,{sequence:CONDITIONAL,policy:DISTANCE});
+ const denominator=sat.durationHours-sat.warmupHours;
+ const inWindow=result.arrivals.filter(a=>a.status==='served'&&
+  a.timeMs>=c.measurementStartMs&&a.timeMs<c.measurementEndMs);
+ const coreShare=result.metrics.queueConditions.queued/
+  Math.max(1,result.arrivals.length-1);
+ return {status:'SYNTHETIC_CORE_ONLY_SATURATED_DIAGNOSTIC_NOT_OBSERVED',
+  requestedDemandPerHour:sat.demandPerHour,
+  arrivalsPerHour:inWindow.length/denominator,
+  measuredArrivals:inWindow.length,measurementHours:denominator,
+  coreQueueShare:coreShare,queueCount:result.metrics.queueConditions.queued,
+  fullMixtureTailSelected:result.metrics.queueConditions.tailSelected,
+  observedReferenceApproxArrivalsPerHour:sat.referenceApproxRatePerHour,
+  observedReferenceRole:'CLAUDE_APPROXIMATE_EXPECTATION_NOT_FIT_GATE',
+  manifestSha256:digest(manifest),lockSha256:A11_SPACING_PROVENANCE.lockSha256,
+  notes:'Synthetic saturated arrival-only diagnostic with no departure opportunities; no capacity certification'};
+}
+export function observedValidityGate(level,config=DEFAULT_CONFIG){
+ const gate=config.observedValidityGate;
+ check(gate&&gate.status==='OBSERVED_AGGREGATE'&&gate.minMeasuredDeparturesPerHour===2,
+  'unregistered observed validity gate');
+ const referenceCase=level.scenarios.find(x=>x.meta.sequence===CONDITIONAL&&x.meta.policy===DISTANCE);
+ check(referenceCase,'missing conditional distance comparator');
+ const arrivals=referenceCase.metrics.arrivalRatePerHour;
+ const departures=referenceCase.metrics.departureRatePerHour;
+ const eligible=gate.demandLevelsPerHour.includes(level.arrivalsPerHour);
+ return {status:!eligible?'NOT_APPLICABLE':
+   arrivals>=gate.minMeasuredArrivalsPerHour&&arrivals<=gate.maxMeasuredArrivalsPerHour&&
+   departures>=gate.minMeasuredDeparturesPerHour?'PASS':'FAIL_OBSERVED_VALIDITY_GATE',
+  demandArrivalsPerHour:level.arrivalsPerHour,modelArrivalsPerHour:arrivals,
+  modelDeparturesPerHour:departures,observedArrivalBandPerHour:
+   [gate.minMeasuredArrivalsPerHour,gate.maxMeasuredArrivalsPerHour],
+  observedApproxDeparturesPerHour:gate.observedApproxDeparturesPerHour,
+  observedHeavyDeparturesPerHour:gate.observedHeavyDeparturesPerHour,
+  minAcceptedDeparturesPerHour:gate.minMeasuredDeparturesPerHour,
+  observedReference:'SEPTEMBER_EVENING_PEAKS_7_DAYS_ANA_AGGREGATE_REVIEW_5903308924',
+  unvalidatedGroundEvents:true,notAnOperationalCapacityClaim:true};
+}
 export function compareDemandLevels(base=DEFAULT_CONFIG){
  validateConfig(base);
  const levels=base.arrivalDemandLevelsPerHour.map(arrivalsPerHour=>{
   const config=configForDemandLevel(base,arrivalsPerHour);
   const manifest=makeManifest(config),result=pairedScenarios(manifest,config);
-  return {arrivalsPerHour,manifestSha256:digest(manifest),
+  const level={arrivalsPerHour,manifestSha256:digest(manifest),
    requestedArrivals:manifest.arrivals.length,requestedDepartureOpportunities:manifest.opportunities.length,
    lockedArrivalFloorRaising:result.lockedArrivalFloorRaising,
    scenarios:result.scenarios,feasibility:result.feasibility};
+  return {...level,observedValidityGate:observedValidityGate(level,base)};
  });
  return {levels,a11Spacing:A11_SPACING_PROVENANCE,
+  saturatedArrivalOnly:coreOnlySaturationDiagnostic(base),
+  overallObservedValidityStatus:levels.filter(l=>l.observedValidityGate.status!=='NOT_APPLICABLE')
+   .every(l=>l.observedValidityGate.status==='PASS')?'PASS':'FAIL_OBSERVED_VALIDITY_GATE',
   sourceStatus:'MECHANICS_ONLY_UNVALIDATED_NOT_CAPACITY'};
 }
