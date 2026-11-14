@@ -139,7 +139,7 @@ test('S10 exact A1.1 lock stays sealed and A1.3 nonoperational',()=>{
  const lock=readFileSync(new URL('../a11/calibration-lock.json',import.meta.url),'utf8');
  assert.equal(digest(lock),A11_LOCK_SHA256);
  assert.equal(CONFIG.nonOperational,true);
- assert.equal(VERSION,'A1.3-initial-type-exit-candidate-1');
+ assert.equal(VERSION,'A1.3-C1-bunched-ready-candidate-2');
 });
 
 test('A3: deliberate co-requested same-exit TP then jet can swap under 120s limit',()=>{
