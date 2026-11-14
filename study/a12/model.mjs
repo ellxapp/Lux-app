@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {digest,byteCompare} from '../core.mjs';
 import {profileFor,timeToGoMs,distanceBeforeThresholdNM,minimumCommonFinalNM,wakeFloorNM,assignEffectiveTargets,selectType,APPROVED_TYPE_WEIGHTS} from '../a11/model.mjs';
 
-export const A12_VERSION='A1.2-replicated-queue-candidate-4';
+export const A12_VERSION='A1.2-incremental-fifo-candidate-5';
 export const CONDITIONAL='LINEUP_BEHIND_LANDING';
 export const SEQUENTIAL='SEQUENTIAL_AFTER_RUNWAY_CLEAR';
 export const TIME='TIME';
@@ -33,7 +33,7 @@ function check(ok,msg){if(!ok)throw Error(msg);}
 function integer(v,k,min=0){check(Number.isSafeInteger(v)&&v>=min,'invalid '+k);}
 export function validateConfig(c){
  check(c&&c.schema===1&&c.preset==='A12_MECHANICS_ONLY_UNVALIDATED'&&c.nonOperational===true,'non-operational A1.2 preset required');
- for(const k of ['arrivalROTMs','airborneToFollowerThresholdBufferMs','maxArrivalDeferralMs','runwayClearAfterDepAirborneMs','measurementStartMs','measurementEndMs','drainEndMs','stepMs','seed','arrivalCount','arrivalRequestStepMs','arrivalRequestJitterMs','departureEvery','departureDemandDelayMs'])integer(c[k],k);
+ for(const k of ['arrivalROTMs','airborneToFollowerThresholdBufferMs','maxIncrementalArrivalDelayMs','runwayClearAfterDepAirborneMs','measurementStartMs','measurementEndMs','drainEndMs','stepMs','seed','arrivalCount','arrivalRequestStepMs','arrivalRequestJitterMs','departureEvery','departureDemandDelayMs'])integer(c[k],k);
  check(c.arrivalROTMs>0&&c.stepMs>0&&c.departureEvery>0&&c.arrivalCount>=2,'invalid positive timing or counts');
  check(c.measurementEndMs>c.measurementStartMs&&c.drainEndMs>=c.measurementEndMs,'invalid windows');
  check(Array.isArray(c.arrivalDemandLevelsPerHour)&&
@@ -261,92 +261,108 @@ export function feasibility(c=DEFAULT_CONFIG,sequence=CONDITIONAL,category='MEDI
 export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,policy=DISTANCE}={}){
  const c=validateConfig(config);validateManifest(manifest,c);
  check(sequences.includes(sequence)&&policies.includes(policy),'invalid scenario');
- const arrivals=[],departures=[],opportunities=[],events=[],dByFollower=new Map(manifest.opportunities.map(x=>[x.followerId,x]));
- let stopped=false;
+ const arrivals=[],departures=[],events=[];
+ const requests=[...manifest.opportunities].sort((a,b)=>
+  a.requestMs-b.requestMs||a.id.localeCompare(b.id));
+ const pending=[];
+ let requestIndex=0,stopped=false;
+ const enqueueThrough=(timeMs)=>{
+  while(requestIndex<requests.length&&requests[requestIndex].requestMs<=timeMs)
+   pending.push({...requests[requestIndex++],queuedSinceMs:timeMs});
+ };
+ const release=(d,t,prev,f,selectedTime,planningMs,requiredMs,extraDelayMs,noDepTime,reasons,tailDrain=false)=>{
+  const profile=f?profileFor(f.type,f.headwindKt):null;
+  const actualIntervalMs=f?selectedTime-prev.timeMs:null;
+  const row={...d,status:'served',reason:tailDrain?'DRAIN_FIFO_AFTER_FINAL_ARRIVAL':
+    policy===DISTANCE?'DISTANCE_PLANNING':'TIME_PLANNING',
+   missedOpportunity:false,sequence,policy,requestedMs:d.requestMs,
+   originalLeaderId:d.betweenLeaderId,originalFollowerId:d.followerId,
+   leaderId:prev.id,followerId:f?.id??null,leaderThresholdMs:prev.timeMs,
+   followerThresholdMs:tailDrain?null:selectedTime,
+   availableGapMs:actualIntervalMs,requiredGapMs:t.requiredGapMs,
+   planningRequiredMs:planningMs,incrementalArrivalDelayMs:tailDrain?0:extraDelayMs,
+   noDepartureFollowerThresholdMs:tailDrain?null:noDepTime,
+   actualSlackMs:tailDrain?null:actualIntervalMs-t.requiredGapMs,
+   planningSlackMs:tailDrain?null:actualIntervalMs-planningMs,
+   distanceAtLeaderThresholdNM:profile?distanceBeforeThresholdNM(actualIntervalMs,profile):null,
+   planningDistanceNM:c.distancePlanningNM[d.category],
+   earliestPhysicalFollowerMs:prev.timeMs+t.requiredGapMs,
+   bindingReasons:reasons,events:t,timeMs:t.departureAirborneMs,
+   delayMs:Math.max(0,t.departureAirborneMs-d.requestMs),
+   queueWaitMs:Math.max(0,t.departureAirborneMs-d.requestMs),
+   fifoQueuePosition:0,sourceStatus:'SYNTHETIC_UNVALIDATED'};
+  departures.push(row);
+  events.push({flightId:d.id,event:'departure-airborne',timeMs:t.departureAirborneMs});
+  check(t.departureRollStartMs>=t.arrivalRunwayClearMs,'unsafe roll before arrival clear');
+  if(!tailDrain)check(selectedTime>=t.followerPhysicalMinimumMs,
+   'follower before departure protection');
+  return row;
+ };
  for(let i=0;i<manifest.arrivals.length;i++){
   const f=manifest.arrivals[i],prev=arrivals.at(-1);
   if(stopped||(prev&&prev.status!=='served')){
    stopped=true;
-   arrivals.push({...f,status:'censored',reason:'drain-horizon',timeMs:null,delayMs:null});
-   const dep=dByFollower.get(f.id);
-   if(dep){
-    const missed={...dep,status:'censored',reason:'arrival-drain-horizon',missedOpportunity:true,
-     sequence,policy,bindingReasons:['DRAIN_HORIZON'],timeMs:null,delayMs:null};
-    departures.push(missed);opportunities.push(missed);
-   }
+   arrivals.push({...f,status:'censored',reason:'drain-horizon',
+    timeMs:null,delayMs:null,sourceStatus:'SYNTHETIC_UNVALIDATED'});
    continue;
   }
   const noDepFloor=prev?minArrivalThresholdGapMs(prev,f,c):0;
-  // The delivered-spacing target is frozen per follower, independent of
-  // whether an intervening departure is attempted, accepted or missed.
-  // No post-departure catch-up at the 3NM surveillance minimum.
   const followerProfile=profileFor(f.type,f.headwindKt);
   const coreTargetGapMs=prev?timeToGoMs(f.coreTargetM,followerProfile):0;
   const coreRequiredMs=Math.max(noDepFloor,coreTargetGapMs);
-  // Decision uses original request time BEFORE any departure release attempt.
-  // Queued => core-only; nonqueued => original full mixture, including tail.
-  const isQueued=!!prev && f.requestMs < prev.timeMs+coreRequiredMs;
+  const isQueued=!!prev&&f.requestMs<prev.timeMs+coreRequiredMs;
   const selectedTargetM=isQueued?f.coreTargetM:f.effectiveTargetM;
   const selectedComponent=isQueued?'CORE':f.effectiveTargetComponent;
   const lockedTargetMs=prev?timeToGoMs(selectedTargetM,followerProfile):0;
   const noDepRequiredMs=Math.max(noDepFloor,lockedTargetMs);
   const noDepTime=prev?Math.max(f.requestMs,prev.timeMs+noDepRequiredMs):f.requestMs;
-  const d=dByFollower.get(f.id);
   let selectedTime=noDepTime;
-  if(d){
+  // A request arriving before the earliest follower threshold is eligible for
+  // this opportunity, regardless of which future pair it was first tied to.
+  // Later requests cannot jump an earlier pending request (strict FIFO).
+  if(prev)enqueueThrough(noDepTime);
+  if(prev&&pending.length){
+   const d=pending[0];
    const t=timeline(prev.timeMs,d.requestMs,d.category,sequence,c);
-   const profile=profileFor(f.type,f.headwindKt);
-   const plannedDistanceMs=timeToGoMs(c.distancePlanningNM[d.category]*NM,profile);
+   const plannedDistanceMs=timeToGoMs(c.distancePlanningNM[d.category]*NM,followerProfile);
    const planningMs=policy===DISTANCE?plannedDistanceMs:t.requiredGapMs;
    const requiredMs=Math.max(t.requiredGapMs,planningMs,noDepRequiredMs);
    const candidate=Math.max(f.requestMs,prev.timeMs+requiredMs);
-   const delayFromDemandMs=candidate-f.requestMs;
-   const canServe=candidate<=c.drainEndMs&&delayFromDemandMs<=c.maxArrivalDeferralMs;
-   const reason=!canServe?'ARRIVAL_DEFERRAL_CEILING':
-     policy===DISTANCE?'DISTANCE_PLANNING':'TIME_PLANNING';
-   selectedTime=canServe?candidate:noDepTime;
-   const reasons=[];
-   if(canServe){
-    for(const [name,ms] of [['ARRIVAL_A11_LOCKED_DELIVERED_SPACING',noDepRequiredMs],
-      ['DEPARTURE_PHYSICAL',t.requiredGapMs],
-      [policy==='DISTANCE'?'DISTANCE_PLANNING':'TIME_PLANNING',planningMs]]){
+   const extraDelayMs=Math.max(0,candidate-noDepTime);
+   const canRelease=candidate<=c.drainEndMs&&
+    extraDelayMs<=c.maxIncrementalArrivalDelayMs &&
+    t.departureAirborneMs<=candidate;
+   if(canRelease){
+    selectedTime=candidate;
+    const reasons=[];
+    for(const [name,ms] of [
+     ['ARRIVAL_A11_LOCKED_DELIVERED_SPACING',noDepRequiredMs],
+     ['DEPARTURE_PHYSICAL',t.requiredGapMs],
+     [policy===DISTANCE?'DISTANCE_PLANNING':'TIME_PLANNING',planningMs]]){
      if(Math.abs(requiredMs-ms)<=c.stepMs)reasons.push(name);
     }
-   }
-   const actualIntervalMs=selectedTime-prev.timeMs;
-   const distanceAtLeaderThresholdNM=distanceBeforeThresholdNM(actualIntervalMs,profile);
-   const row={...d,status:canServe?'served':'censored',reason:canServe?reason:'missed-opportunity',
-    missedOpportunity:!canServe,sequence,policy,requestedMs:d.requestMs,
-    leaderId:prev.id,followerId:f.id,leaderThresholdMs:prev.timeMs,
-    followerThresholdMs:selectedTime,availableGapMs:actualIntervalMs,requiredGapMs:t.requiredGapMs,
-    planningRequiredMs:planningMs,actualSlackMs:actualIntervalMs-t.requiredGapMs,
-    planningSlackMs:actualIntervalMs-planningMs,
-    distanceAtLeaderThresholdNM,planningDistanceNM:c.distancePlanningNM[d.category],
-    earliestPhysicalFollowerMs:prev.timeMs+t.requiredGapMs,
-    bindingReasons:canServe?reasons:['ARRIVAL_DEFERRAL_CEILING'],
-    events:canServe?t:null,
-    timeMs:canServe?t.departureAirborneMs:null,
-    delayMs:canServe?Math.max(0,t.departureAirborneMs-d.requestMs):null,
-    sourceStatus:'SYNTHETIC_UNVALIDATED'};
-   departures.push(row);opportunities.push(row);
-   if(canServe){
-    check(t.departureRollStartMs>=t.arrivalRunwayClearMs,'unsafe roll before arrival clear');
-    check(selectedTime>=t.followerPhysicalMinimumMs,'follower before departure safety buffer');
-    events.push({flightId:d.id,event:'departure-airborne',timeMs:t.departureAirborneMs});
+    const released=pending.shift();
+    release(released,t,prev,f,selectedTime,planningMs,requiredMs,extraDelayMs,noDepTime,reasons);
+   }else{
+    // The request remains at queue head and is retried at the NEXT arrival gap.
+    // It is not censored, rejected, or replaced by later requests here.
+    events.push({flightId:d.id,event:'fifo-hold-next-gap',timeMs:noDepTime,
+     reason:extraDelayMs>c.maxIncrementalArrivalDelayMs?
+      'INCREMENTAL_DELAY_EXCEEDS_LIMIT':'HORIZON_OR_RELEASE_TIMING',
+     incrementalArrivalDelayMs:extraDelayMs});
    }
   }
   if(selectedTime>c.drainEndMs){
    stopped=true;
-   arrivals.push({...f,status:'censored',reason:'drain-horizon',timeMs:null,delayMs:null});continue;
+   arrivals.push({...f,status:'censored',reason:'drain-horizon',
+    timeMs:null,delayMs:null,sourceStatus:'SYNTHETIC_UNVALIDATED'});
+   continue;
   }
   const row={...f,status:'served',timeMs:selectedTime,delayMs:selectedTime-f.requestMs,
    arrivalClearMs:selectedTime+c.arrivalROTMs,bindingReasons:[],
-   lockedTargetM:selectedTargetM??null,
-   lockedTargetComponent:selectedComponent??null,
-   lockedTargetGapMs:lockedTargetMs,
-   fullMixtureTargetM:f.effectiveTargetM??null,
-   coreOnlyTargetM:f.coreTargetM??null,
-   queueConditional:isQueued,
+   lockedTargetM:selectedTargetM??null,lockedTargetComponent:selectedComponent??null,
+   lockedTargetGapMs:lockedTargetMs,fullMixtureTargetM:f.effectiveTargetM??null,
+   coreOnlyTargetM:f.coreTargetM??null,queueConditional:isQueued,
    queueThresholdMs:prev?prev.timeMs+coreRequiredMs:null,
    queueDecisionRule:'REQUEST_EARLIER_THAN_PREV_THRESHOLD_PLUS_CORE_REQUIRED',
    a11LockedSpacingBinding:!!prev&&selectedTime>=prev.timeMs+noDepRequiredMs,
@@ -354,26 +370,67 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   arrivals.push(row);
   events.push({flightId:f.id,event:'arrival-threshold',timeMs:selectedTime});
  }
+ // After the final ARR there is no follower to delay. FIFO departures can
+ // use the remaining declared DRAIN window after the final ARR has vacated.
+ // This is reported separately, never retroactively counted as an hourly
+ // movement in the measurement window.
+ const last=arrivals.filter(a=>a.status==='served').at(-1);
+ if(last){
+  enqueueThrough(c.drainEndMs);
+  let nextAvailableMs=last.arrivalClearMs;
+  while(pending.length){
+   const d=pending[0];
+   const leader={...last,timeMs:Math.max(last.timeMs,nextAvailableMs-c.arrivalROTMs)};
+   const t=timeline(leader.timeMs,d.requestMs,d.category,SEQUENTIAL,c);
+   if(t.departureAirborneMs>c.drainEndMs)break;
+   pending.shift();
+   release(d,t,leader,null,null,null,t.requiredGapMs,0,null,
+    ['FIFO_DRAIN_AFTER_LAST_ARRIVAL'],true);
+   nextAvailableMs=Math.max(t.departureRunwayClearMs,t.departureAirborneMs);
+  }
+ }
+ // Requests that remain unserved at the declared drain horizon are the only
+ // ones censored. Count every original request exactly once.
+ enqueueThrough(c.drainEndMs);
+ for(const d of pending)departures.push({...d,status:'censored',
+  reason:'drain-horizon',missedOpportunity:true,sequence,policy,
+  timeMs:null,delayMs:null,queueWaitMs:null,events:null,
+  bindingReasons:['DRAIN_HORIZON'],sourceStatus:'SYNTHETIC_UNVALIDATED'});
+ const assigned=new Set(departures.map(d=>d.id));
+ check(assigned.size===departures.length,'departure queued more than once');
+ for(const d of requests)check(assigned.has(d.id),'lost departure demand');
+ const opportunities=requests.map(d=>departures.find(x=>x.id===d.id));
  const all=[...arrivals,...departures];
  const totals={demand:all.length,served:all.filter(x=>x.status==='served').length,
   censored:all.filter(x=>x.status==='censored').length,rejected:0,goArounds:0};
- check(totals.demand===totals.served+totals.censored+totals.rejected+totals.goArounds,'demand conservation');
- const servedArr=arrivals.filter(x=>x.status==='served'),servedDep=departures.filter(x=>x.status==='served');
- const window=(x)=>x.timeMs>=c.measurementStartMs&&x.timeMs<c.measurementEndMs;
+ check(totals.demand===totals.served+totals.censored+totals.rejected+
+  totals.goArounds,'demand conservation');
+ const servedArr=arrivals.filter(x=>x.status==='served'),
+  servedDep=departures.filter(x=>x.status==='served');
+ const window=x=>x.timeMs>=c.measurementStartMs&&x.timeMs<c.measurementEndMs;
  const nArr=servedArr.filter(window).length,nDep=servedDep.filter(window).length;
  const rate=HR/(c.measurementEndMs-c.measurementStartMs);
- const slack=opportunities.filter(x=>x.status==='served').map(x=>x.actualSlackMs/1000);
- const arrDelay=servedArr.map(x=>x.delayMs/1000),depDelay=servedDep.map(x=>x.delayMs/1000);
- const mean=x=>x.length?x.reduce((a,b)=>a+b,0)/x.length:null;
+ const slack=opportunities.filter(x=>x.status==='served'&&x.actualSlackMs!==null)
+  .map(x=>x.actualSlackMs/1000);
+ const arrDelay=servedArr.map(x=>x.delayMs/1000),
+  depDelay=servedDep.map(x=>x.delayMs/1000);
+ const mean=xs=>xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null;
  const binding={};
- for(const x of opportunities)for(const k of x.bindingReasons)binding[k]=(binding[k]||0)+1;
- const metrics={arrivalRatePerHour:nArr*rate,departureRatePerHour:nDep*rate,runwayMovementsPerHour:(nArr+nDep)*rate,
+ for(const x of opportunities)for(const k of x.bindingReasons)
+  binding[k]=(binding[k]||0)+1;
+ const metrics={
+  arrivalRatePerHour:nArr*rate,departureRatePerHour:nDep*rate,
+  runwayMovementsPerHour:(nArr+nDep)*rate,
   measurementArrivals:nArr,measurementDepartures:nDep,
-  usedDepartureOpportunities:servedDep.length,missedDepartureOpportunities:departures.filter(x=>x.missedOpportunity).length,
+  usedDepartureOpportunities:servedDep.length,
+  missedDepartureOpportunities:departures.filter(x=>x.missedOpportunity).length,
+  pendingAtDrain:pending.length,
+  departedDuringDrain:servedDep.filter(x=>x.reason==='DRAIN_FIFO_AFTER_FINAL_ARRIVAL').length,
   slackSeconds:{p10:quant(slack,.1),median:quant(slack,.5),p90:quant(slack,.9),
    negativeShare:slack.length?slack.filter(x=>x<0).length/slack.length:null},
   arrivalDelaySeconds:{mean:mean(arrDelay),median:quant(arrDelay,.5),p90:quant(arrDelay,.9)},
-  departureDelaySeconds:{median:quant(depDelay,.5),p90:quant(depDelay,.9)},
+  departureDelaySeconds:{mean:mean(depDelay),median:quant(depDelay,.5),p90:quant(depDelay,.9)},
+  departureMeasurementDelaySeconds:{mean:mean(servedDep.filter(window).map(x=>x.delayMs/1000))},
   bindingReasons:binding,
   queueConditions:{queued:arrivals.filter(x=>x.queueConditional===true).length,
    nonqueued:arrivals.filter((x,i)=>i>0&&x.queueConditional===false).length,
@@ -381,13 +438,16 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
    tailSelected:arrivals.filter(x=>x.lockedTargetComponent==='TAIL').length},
   capacityEligible:false,capacityLabel:'MECHANICS_ONLY_UNVALIDATED_NOT_TECHNICAL_CAPACITY'};
  return {meta:{modelVersion:A12_VERSION,sequence,policy,manifestSha256:digest(manifest),
-  configSha256:digest(c),preset:c.preset,observation:'HYPOTHETICAL_MECHANICS',source:'SYNTHETIC_ONLY',
-  departureDemandProfile:manifest.departureDemandProfile??'INSERTABLE_EVERY_SECOND_ARR',
+  configSha256:digest(c),preset:c.preset,observation:'HYPOTHETICAL_MECHANICS',
+  source:'SYNTHETIC_ONLY',departureDemandProfile:
+   manifest.departureDemandProfile??'INSERTABLE_EVERY_SECOND_ARR',
   a11LockReadOnly:true,a11Spacing:A11_SPACING_PROVENANCE,
   arrivalTargetApplication:'QUEUE_CONDITIONAL_CORE_IF_REQUEST_BEFORE_EARLIEST_CORE_THRESHOLD_ELSE_FULL_MIXTURE',
   queueConditionalSource:'CLAUDE_REVIEW_5903308924_MODERATE_CONFIDENCE',
+  departureQueueRule:'FIFO_INCREMENTAL_ARR_DELAY_GATE_ONLY_CENSOR_AT_DRAIN',
   units:{time:'integer-ms',distance:'NM'},
-  measurement:{startMs:c.measurementStartMs,endMs:c.measurementEndMs,drainEndMs:c.drainEndMs}},
+  measurement:{startMs:c.measurementStartMs,endMs:c.measurementEndMs,
+   drainEndMs:c.drainEndMs}},
   totals,metrics,arrivals,departures,opportunities,events};
 }
 export function lockedArrivalFloorDiagnostics(manifest,c=DEFAULT_CONFIG){
@@ -604,7 +664,22 @@ export function replicateComparison(base=DEFAULT_CONFIG){
       'ELEVATED_NONMONOTONICITY_REQUIRES_REVIEW':'LOW_NONMONOTONICITY',
      sourceStatus:'GREEDY_SCHEDULER_DIAGNOSTIC_NOT_SAFETY_GATE'});
    }
-   const observedGate=profile==='INSERTABLE_EVERY_SECOND_ARR'&&[20,21].includes(arrivalsPerHour)?
+   const observedGate=profile==='OBSERVED_LIKE_3_PER_H_2_HEAVY'&&[20,21].includes(arrivalsPerHour)?
+    {status:'REPLICATED_OBSERVED_LIKE_FIFO_GATE',
+     reference:'CLAUDE_REVIEW_5903407826_ABOUT_20_ARR_H_AND_ALL_3_DEP_H',
+     observedBand:[19,21],requestedDeparturesPerHour:3,
+     fullRunRequestedDepartureCount:6,
+     conditionalDistanceMeanARRPerHour:summary[0].statistics.arrivalsPerHour.mean,
+     conditionalDistanceMeanDEPPerHour:summary[0].statistics.departuresPerHour.mean,
+     conditionalDistanceMeanDepartureDelaySeconds:rows.reduce((sum,r)=>sum+
+      (r.scenarios[0].metrics.departureDelaySeconds.mean??0),0)/rows.length,
+     allRequestedDeparturesServedShare:rows.filter(r=>
+      r.scenarios[0].metrics.usedDepartureOpportunities===6).length/rows.length,
+     verdict:summary[0].statistics.arrivalsPerHour.mean>=19&&
+      summary[0].statistics.arrivalsPerHour.mean<=21&&
+      rows.every(r=>r.scenarios[0].metrics.usedDepartureOpportunities===6)?
+      'PASS':'FAIL_OBSERVED_LIKE_FIFO_GATE'}:
+    profile==='INSERTABLE_EVERY_SECOND_ARR'&&[20,21].includes(arrivalsPerHour)?
     {status:'REPLICATED_OBSERVED_COMPARATOR',
      conditionalDistanceMeanARRPerHour:summary[0].statistics.arrivalsPerHour.mean,
      conditionalDistanceMeanDEPPerHour:summary[0].statistics.departuresPerHour.mean,
