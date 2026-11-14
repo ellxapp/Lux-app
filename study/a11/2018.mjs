@@ -25,6 +25,8 @@ export function compare2018({mode,runway,syntheticRate,capacityEligible,matchedM
   syntheticRate:Number.isFinite(syntheticRate)?syntheticRate:null,
   deltaObserved:comparable?syntheticRate-historical.observed:null,
   deltaOptimal:comparable?syntheticRate-historical.optimal:null,
+  illustrativeArithmeticDeltaObserved:Number.isFinite(syntheticRate)?syntheticRate-historical.observed:null,
+  illustrativeArithmeticDeltaOptimal:Number.isFinite(syntheticRate)?syntheticRate-historical.optimal:null,
   comparison:comparable?'SIMPLIFIED_SYNTHETIC_VS_HISTORICAL_TECHNICAL':'NOT_COMPARABLE',
   warning:'2018 is a discrepancy reference, never a fitting target; mode/ROT/speed/exits/coordination not equivalent'};
 }
