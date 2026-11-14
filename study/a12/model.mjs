@@ -514,6 +514,15 @@ function explainNonmonotonic(cond,seq,seed,policy){
   return c&&c.status!==d.status;
  });
  const d=first?bc.get(first.id):null;
+ const isInWindow=(x,m)=>x?.status==='served'&&
+  x.timeMs>=m.startMs&&x.timeMs<m.endMs;
+ const firstWindow=seq.departures.find(x=>{
+  const c=bc.get(x.id);
+  return c&&isInWindow(x,seq.meta.measurement)!==isInWindow(c,cond.meta.measurement);
+ });
+ const wc=firstWindow?bc.get(firstWindow.id):null;
+ const mechanism=first?'DIFFERENT_RELEASE_OR_MISSED_STATUS':
+  firstWindow?'MEASUREMENT_WINDOW_BOUNDARY_CROSSING':'UNRESOLVED_MONOTONICITY_VIOLATION';
  return {seed,policy,
   conditionalDeparturesInWindow:cond.metrics.measurementDepartures,
   sequentialDeparturesInWindow:seq.metrics.measurementDepartures,
@@ -522,6 +531,17 @@ function explainNonmonotonic(cond,seq,seed,policy){
   sequentialAllServed:seq.metrics.usedDepartureOpportunities,
   conditionalArrivalsInWindow:cond.metrics.measurementArrivals,
   sequentialArrivalsInWindow:seq.metrics.measurementArrivals,
+  evidenceClassification:mechanism,
+  firstMeasurementWindowDifference:firstWindow?{
+   departureId:firstWindow.id,
+   conditionalCounted:isInWindow(wc,cond.meta.measurement),
+   sequentialCounted:isInWindow(firstWindow,seq.meta.measurement),
+   conditionalAirborneMs:wc?.timeMs??null,
+   sequentialAirborneMs:firstWindow.timeMs??null,
+   conditionalStatus:wc?.status??null,sequentialStatus:firstWindow.status,
+   measurementStartMs:seq.meta.measurement.startMs,
+   measurementEndMs:seq.meta.measurement.endMs
+  }:null,
   earliestStatusDivergence:first?{
    departureId:first.id,conditionalStatus:d?.status??null,sequentialStatus:first.status,
    conditionalFollowerThresholdMs:d?.followerThresholdMs??null,
@@ -530,7 +550,7 @@ function explainNonmonotonic(cond,seq,seed,policy){
    sequentialDecisionReasons:first.bindingReasons??[],
    conditionalLeaderThresholdMs:d?.leaderThresholdMs??null,
    sequentialLeaderThresholdMs:first.leaderThresholdMs??null}:null,
-  explanation:'GREEDY_QUEUE_PATH_DEPENDENCE_AND_MEASUREMENT_WINDOW_BOUNDARY; see per-seed earliest status divergence and queue trajectory. Not proof that sequential mechanics physically outperform conditional.',
+  explanation:'Classification is based on the first divergent release status and first measurement-window crossing; greedy queue path-dependence and censoring are model hypotheses, not demonstrated physical advantages.',
   needsIndependentTechnicalReview:true};
 }
 export function replicateComparison(base=DEFAULT_CONFIG){
