@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {captureProbability,captureDistance,isBusyArrival,classifyRegime,typeFamily,quantileType7,
   observeDay,stats,hardMetrics,CAPTURE_DIGEST,stratumPairs,selectHourlyMetar,syntheticWeatherClass} from './observation.mjs';
 import {profileFor,timeToGoMs,makeScenarioManifest,wakeFloorNM,materialize,assignEffectiveTargets,runAssignedManifest,minimumCommonFinalNM,evaluateSynthetic,
-  scoreModel,fitDevelopment} from './model.mjs';
+  scoreModel,fitDevelopment,APPROVED_TYPE_WEIGHTS,selectType,FIT_POLICY,A11_PARAMETER_NAMES,parameterVector,fromParameterVector} from './model.mjs';
 import {validateHoldout} from './validate.mjs';
 import {compare2018,EUROCONTROL_2018_REFERENCE} from './2018.mjs';
 import {canonical,digest} from '../core.mjs';
@@ -87,7 +87,7 @@ test('ICAO PANS-ATM minima and no Super fallback',()=>{
 
 test('manifest quantiles are immutable and model outputs reproducible without PRNG',()=>{
  const manifest=makeScenarioManifest({seed:12,days:5,perDay:24});
- const p={shift:1.8,sigma:.34,mu:[1.48,1.47,1.35]};
+ const p={shift:1.8,sigma:.34,mu:[1.48,1.47,1.35],w:.25,muTail:2.3,sigmaTail:.4};
  const before=canonical(manifest);
  const orig=Math.random;Math.random=()=>{throw Error('runner used Math.random');};
  try {
@@ -121,7 +121,7 @@ test('holdout evaluation refuses non-approved lock and no missing-day substituti
 
 test('generator writes immutable requested target; physical runner uses it without randomness',()=>{
  const raw=makeScenarioManifest({seed:303,days:2,perDay:24});
- const p={shift:1.8,sigma:.34,mu:[1.48,1.47,1.35]};
+ const p={shift:1.8,sigma:.34,mu:[1.48,1.47,1.35],w:.25,muTail:2.3,sigmaTail:.4};
  const assigned=assignEffectiveTargets(raw,p);
  assert.ok(Number.isSafeInteger(assigned.flights[0][1].effectiveTargetM));
  assert.equal(raw.flights[0][1].effectiveTargetM,undefined);
@@ -137,7 +137,7 @@ test('different type trajectories retain 3NM common-final floor',()=>{
  const interval=timeToGoMs(3*1852,b);
  assert.ok(Number.isFinite(minimumCommonFinalNM(a,b,interval)));
  const assigned=assignEffectiveTargets(makeScenarioManifest({seed:15,days:3,perDay:24}),
-  {shift:.1,sigma:.05,mu:[.1,.1,.1]});
+  {shift:.1,sigma:.05,mu:[.1,.1,.1],w:.1,muTail:2.3,sigmaTail:.4});
  const result=runAssignedManifest(assigned);
  assert.ok(result.floorRaised>0);
  for(const day of result.days)for(const arr of day.arrivals.slice(1))
@@ -175,4 +175,56 @@ test('hourly METAR matching, non-LVP and 15kt boundaries are deterministic filte
  assert.equal(syntheticWeatherClass({...r3,rvrAM:800},240).classification,'LVP_PROXY');
  assert.equal(syntheticWeatherClass({...r3,windDirectionDeg:null,windKt:null},240).classification,'GOOD_WEATHER');
  assert.equal(syntheticWeatherClass(null,240).fitEligible,false);
+});
+
+test('L1: exactly eight free parameters, deterministic core/tail assignment and long tail',()=>{
+ const p={shift:1.8,sigma:.2,mu:[1.4,1.4,1.4],w:.3,muTail:2.6,sigmaTail:.3};
+ assert.equal(parameterVector(p).length,8);
+ assert.equal(A11_PARAMETER_NAMES.length,8);
+ assert.deepEqual(fromParameterVector(parameterVector(p)),p);
+ assert.throws(()=>fromParameterVector([1,2,3,4,5]),/8 parameters/);
+ const raw=makeScenarioManifest({seed:43,days:8,perDay:48});
+ const assigned=assignEffectiveTargets(raw,p);
+ const comps=assigned.flights.flat().map(x=>x.effectiveTargetComponent);
+ assert.ok(comps.includes('TAIL'));assert.ok(comps.includes('CORE'));
+ const tail=assigned.flights.flat().filter(x=>x.effectiveTargetComponent==='TAIL');
+ assert.ok(tail.some(x=>x.effectiveTargetM>9*1852),'tail must reach longer equivalent track miles');
+ assert.equal(assigned.distributionParametersSha256,digest(p));
+});
+test('L2: pooled family counts are exact, heavies present, wake categories exercised',()=>{
+ assert.equal(APPROVED_TYPE_WEIGHTS.reduce((n,t)=>n+t.count,0),1851);
+ const h=selectType(.8);assert.ok(h);
+ const m=makeScenarioManifest({seed:20261114,days:15,perDay:60});
+ const fs=m.flights.flat();
+ assert.ok(fs.some(x=>x.wake==='H'&&x.type==='B744'));
+ assert.ok(fs.some(x=>x.type==='A320'));
+ assert.ok(fs.some(x=>x.type==='E190'));
+ assert.ok(fs.some(x=>x.type==='PC12'));
+ assert.ok(fs.some((x,i)=>i>0&&x.wake==='M'&&fs[i-1].wake==='H'));
+ assert.equal(wakeFloorNM('H','M'),5);
+});
+test('N1: cross-runway consecutive arrivals are kept as observed pairs',()=>{
+ const arrivals=Array.from({length:20},(_,i)=>({id:'S'+i,type:'B738',
+  runway:i%2?'06':'24',timeMs:i*150000,headwindKt:0,captureQuantile:0,equivalentDistanceNM:6}));
+ const pairs=observeDay({dayId:'SYN',arrivals});
+ assert.ok(pairs.length>0);
+ assert.ok(pairs.some(p=>p.leaderId==='S0'&&p.followerId==='S1'));
+});
+test('N2 and N3: ROT floor is named, binding is recorded, synthetic counts not observed capacity',()=>{
+ const preset=JSON.parse(readFileSync(new URL('./SEP2026_FITTED.json',import.meta.url),'utf8'));
+ assert.equal(preset.arrivalRotProxyMs,80000);
+ const p={shift:.1,sigma:.05,mu:[.1,.1,.1],w:.1,muTail:2.4,sigmaTail:.3};
+ const r=evaluateSynthetic(makeScenarioManifest({seed:2,days:3,perDay:24}),p);
+ assert.ok(r.totals.rotFloorBindings>=0);
+ assert.equal(r.meta.rotProxyMs,80000);
+ assert.match(r.meta.hourlyCountStatus,/NOT_COMPARABLE/);
+});
+test('L3: single published candidate fitting policy and stopping provenance',()=>{
+ assert.equal(FIT_POLICY.maxRounds,60);
+ assert.equal(FIT_POLICY.seed,20261114);
+ const r=fitDevelopment(benchmark,{seed:12,days:4,perDay:24,maxRounds:2});
+ assert.ok(['MAX_ROUNDS','STEP_TOLERANCE'].includes(r.stopping.termination));
+ assert.ok(Number.isInteger(r.stopping.iterations));
+ assert.ok(r.stopping.evaluations>0);
+ assert.equal(r.provenance.freeParameterCount,8);
 });
