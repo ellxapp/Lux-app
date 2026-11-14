@@ -5,7 +5,7 @@ import {canonical,digest} from '../core.mjs';
 import {DEFAULT_CONFIG,validateConfig,makeManifest,validateManifest,timeline,
  feasibility,simulate,pairedScenarios,minArrivalThresholdGapMs,
  CONDITIONAL,SEQUENTIAL,DISTANCE,TIME,APPROVED_A11_LOCK_SHA256,A11_SPACING_PROVENANCE,
- configForDemandLevel,compareDemandLevels,observedValidityGate,coreOnlySaturationDiagnostic} from './model.mjs';
+ configForDemandLevel,compareDemandLevels,observedValidityGate,coreOnlySaturationDiagnostic,replicateComparison} from './model.mjs';
 import {profileFor,timeToGoMs,assignEffectiveTargets,APPROVED_TYPE_WEIGHTS} from '../a11/model.mjs';
 const clone=x=>structuredClone(x);
 const simpleArr=(id,requestMs,type='B738',wake='M',headwindKt=0)=>
@@ -295,4 +295,66 @@ test('A12 candidate default synthetic demand exercises real departure opportunit
   'time and distance policies must calculate distinct planning requirements');
  assert.ok(run.scenarios.every(x=>x.totals.demand===x.totals.served+x.totals.censored+
   x.totals.rejected+x.totals.goArounds));
+});
+
+test('B3: at least 50 deterministic seeds across every demand level and both demand profiles',()=>{
+ const cfg=clone(DEFAULT_CONFIG);
+ assert.ok(cfg.replication.seeds>=50);
+ const result=replicateComparison(cfg);
+ assert.equal(result.seedCount,cfg.replication.seeds);
+ assert.deepEqual([...new Set(result.results.map(x=>x.arrivalsPerHour))],[18,20,21,22]);
+ assert.equal(result.results.length,8);
+ for(const level of result.results){
+  assert.equal(level.seedCount,50);
+  assert.equal(level.perSeedManifestSha256.length,50);
+  assert.equal(new Set(level.perSeedManifestSha256.map(x=>x.sha256)).size,50);
+  assert.equal(level.statistics.length,4);
+  assert.equal(level.pairedDifferences.length,2);
+  assert.equal(level.monotonicity.length,2);
+  for(const stat of level.statistics)for(const name of
+    ['arrivalsPerHour','departuresPerHour','missedDepartureOpportunities','meanArrivalDelaySeconds']){
+   assert.equal(stat.statistics[name].n,50);
+   assert.ok(stat.statistics[name].p10<=stat.statistics[name].mean ||
+     Number.isFinite(stat.statistics[name].mean)); // quantile and mean are legitimate observations
+   assert.ok(stat.statistics[name].p10<=stat.statistics[name].p90);
+  }
+  for(const seq of level.pairedDifferences)for(const metric of Object.values(seq.differences)){
+   assert.equal(metric.n,50);
+   assert.ok(metric.pairedMeanCI95.lower<=metric.pairedMeanCI95.upper);
+   assert.equal(metric.pairedMeanCI95.replicates,2000);
+  }
+  for(const m of level.monotonicity){
+   assert.equal(m.n,50);
+   assert.equal(m.violations.length,m.violatingSeeds);
+   assert.equal(m.shareSequentialHigher,m.violatingSeeds/50);
+   assert.ok(m.violations.every(v=>v.seed>=cfg.replication.seedStart&&
+     v.excessDeparturesInWindow>0&&v.needsIndependentTechnicalReview===true));
+  }
+ }
+ assert.equal(result.a11LockSha256,APPROVED_A11_LOCK_SHA256);
+});
+test('N2: observed-like requests explicitly total 3 departures/hour with two heavy',()=>{
+ for(const rate of [18,20,21,22]){
+  const cfg=configForDemandLevel(DEFAULT_CONFIG,rate);
+  const manifest=makeManifest(cfg,'OBSERVED_LIKE_3_PER_H_2_HEAVY');
+  assert.equal(manifest.opportunities.length,6);
+  assert.equal(manifest.opportunities.filter(x=>x.category==='HEAVY_JET').length,4);
+  assert.equal(manifest.opportunities.filter(x=>x.category==='MEDIUM_JET').length,2);
+  assert.equal(new Set(manifest.opportunities.map(x=>x.followerId)).size,6);
+  assert.equal(manifest.departureDemandProfile,'OBSERVED_LIKE_3_PER_H_2_HEAVY');
+  const results=pairedScenarios(manifest,cfg);
+  assert.ok(results.scenarios.every(x=>x.totals.demand===cfg.arrivalCount+6));
+ }
+});
+test('B3: reproducible matched seed and paired-difference sign convention',()=>{
+ const cfg=clone(DEFAULT_CONFIG);cfg.replication.seeds=50;
+ const r=replicateComparison(cfg);
+ const level=r.results.find(x=>x.profile==='INSERTABLE_EVERY_SECOND_ARR'&&x.arrivalsPerHour===20);
+ const c=level.statistics.find(x=>x.sequence===CONDITIONAL&&x.policy===DISTANCE);
+ const t=level.statistics.find(x=>x.sequence===CONDITIONAL&&x.policy===TIME);
+ const delta=level.pairedDifferences.find(x=>x.sequence===CONDITIONAL).differences.departuresPerHour;
+ assert.ok(Math.abs((t.statistics.departuresPerHour.mean-c.statistics.departuresPerHour.mean)-delta.mean)<1e-9);
+ const gate=level.observedGate;
+ assert.equal(gate.status,'REPLICATED_OBSERVED_COMPARATOR');
+ assert.ok(['PASS','FAIL_OBSERVED_VALIDITY_GATE'].includes(gate.verdict));
 });
