@@ -8,7 +8,8 @@
     6867633651,
     6877178756,
     6877190634,
-    6877231875
+    6877231875,
+    "pullrequestreview-5905137012"
   ],
   "mainBaseSha": "3deafff1f20d1f2218f38c07cec53e43a0dd88ab",
   "observed": {
@@ -62,6 +63,39 @@
         "departuresMean": 14.3,
         "arrivalsMean": 7
       }
+    },
+    "takeoffIntervals": {
+      "source": "Claude PR #4 review pullrequestreview-5905137012; ANA September 2026 IFR take-off times (whole-minute act_date_d)",
+      "observedTimeResolutionSeconds": 60,
+      "early": {
+        "waves": "03-04 UTC departure peak",
+        "intervals": 263,
+        "p10S": 120,
+        "medianS": 120,
+        "p90S": 360,
+        "shareLE60": 0.08,
+        "shareLE120": 0.51,
+        "shareLE180": 0.72,
+        "consecutiveSameExitShare": 0.3
+      },
+      "late": {
+        "waves": "08/16 UTC departure peak",
+        "intervals": 180,
+        "p10S": 60,
+        "medianS": 180,
+        "p90S": 420,
+        "shareLE60": 0.11,
+        "shareLE120": 0.38,
+        "shareLE180": 0.6,
+        "consecutiveSameExitShare": 0.18
+      },
+      "gate": {
+        "medianAbsToleranceSeconds": 30,
+        "shareLE120AbsoluteTolerancePercentagePoints": 10,
+        "scope": "DEVELOPMENT_ONLY_POOLED_CURRENT_FIFO_MEASURED_HOUR_BY_WAVE_ACROSS_FOUR_DEMAND_LEVELS_50_SEEDS",
+        "status": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS",
+        "sameExitShare": "REPORT_ONLY_NO_HARD_TOLERANCE"
+      }
     }
   },
   "fittedSpeedContrast": {
@@ -72,7 +106,12 @@
     "targetJetJetChangeSeconds": 4,
     "fitRule": "LEAST_SQUARES_TO_TWO_ANTISYMMETRIC_TYPE_CONTRASTS; J-J_FIXED_ZERO",
     "sourceStatus": "FITTED_TO_SEP2026_DEV_CHANGE_MEDIANS_CONDITIONAL_ON_300KT_JET_ANCHOR",
-    "noClaimOfTwoIndependentlyIdentifiedSpeeds": true
+    "noClaimOfTwoIndependentlyIdentifiedSpeeds": true,
+    "jetAnchorSensitivityKt": [
+      260,
+      300,
+      340
+    ]
   },
   "demand": {
     "departureLevelsPerHour": [
@@ -169,5 +208,24 @@
   "output": {
     "status": "MECHANICS_ONLY_UNVALIDATED",
     "noOperationalCapacityClaim": true
+  },
+  "readyTimeProcess": {
+    "kind": "BUNCHED_WAVE_READY_TIMES",
+    "status": "FITTED_TO_SEP2026_TAKEOFF_INTERVALS",
+    "calibration": "DETERMINISTIC_GRID_SEARCH_ON_PUBLISHED_AGGREGATES_NO_RAW_MOVEMENT_RECORDS",
+    "early": {
+      "singleFraction": 0.1,
+      "tripleFraction": 0.15,
+      "withinClusterGapMs": 20000,
+      "centerJitterFraction": 0.1
+    },
+    "late": {
+      "singleFraction": 0.24,
+      "tripleFraction": 0.08,
+      "withinClusterGapMs": 25000,
+      "centerJitterFraction": 0.1
+    },
+    "restrictions": "Synthetic requests, not observed taxi-ready/clearance/CTOT timestamps",
+    "queueReadyDefinition": "Request time means synthetic runway-ready time; departures wait if runway occupied."
   }
 }
