@@ -3,7 +3,7 @@
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {digest,byteCompare} from '../core.mjs';
-import {profileFor,timeToGoMs,distanceBeforeThresholdNM,minimumCommonFinalNM,wakeFloorNM,assignEffectiveTargets} from '../a11/model.mjs';
+import {profileFor,timeToGoMs,distanceBeforeThresholdNM,minimumCommonFinalNM,wakeFloorNM,assignEffectiveTargets,selectType,APPROVED_TYPE_WEIGHTS} from '../a11/model.mjs';
 
 export const A12_VERSION='A1.2-locked-arrival-spacing-candidate-2';
 export const CONDITIONAL='LINEUP_BEHIND_LANDING';
@@ -64,9 +64,10 @@ export function configForDemandLevel(base,arrivalsPerHour){
 export function makeManifest(c=DEFAULT_CONFIG){
  validateConfig(c);
  const next=xorshift(c.seed),arrivals=[],opportunities=[];
- const types=[{type:'B738',wake:'M'},{type:'DH8D',wake:'M'},{type:'E295',wake:'M'},{type:'B744',wake:'H'}];
  for(let i=0;i<c.arrivalCount;i++){
-  const selected=types[Math.floor(next()*types.length)],jitter=Math.floor(next()*c.arrivalRequestJitterMs);
+  // Same approved *pooled speed-sample proxy* as A1.1, not an assumed
+  // equally-weighted four-type fleet (which would over-sample heavies).
+  const selected=selectType(next()),jitter=Math.floor(next()*c.arrivalRequestJitterMs);
   arrivals.push({id:'SYN-A'+String(i).padStart(3,'0'),kind:'ARR',wake:selected.wake,type:selected.type,
    runway:'24',headwindKt:0,requestMs:i*c.arrivalRequestStepMs+jitter,
    targetNormal:normal(next),componentQuantile:next(),captureQuantile:next()});
@@ -87,12 +88,14 @@ export function makeManifest(c=DEFAULT_CONFIG){
  return {schema:12,synthetic:true,seed:c.seed,startUtc:'2026-01-01T00:00:00.000Z',
   arrivals:fixedArrivals,opportunities,source:'SYNTHETIC_ONLY_FIXED_MANIFEST',version:A12_VERSION,
   a11LockSha256:A11_SPACING_PROVENANCE.lockSha256,
-  a11ParametersSha256:assigned.distributionParametersSha256};
+  a11ParametersSha256:assigned.distributionParametersSha256,
+  a11FleetWeightsSha256:digest(APPROVED_TYPE_WEIGHTS)};
 }
 export function validateManifest(m,c){
  check(m?.synthetic===true&&m.schema===12&&m.seed===c.seed,'synthetic A1.2 manifest required');
  check(m.a11LockSha256===APPROVED_A11_LOCK_SHA256&&
-   m.a11ParametersSha256===digest(lockedA11.parameters),
+   m.a11ParametersSha256===digest(lockedA11.parameters)&&
+   m.a11FleetWeightsSha256===digest(APPROVED_TYPE_WEIGHTS),
    'manifest must be bound to exact A1.1 lock and parameters');
  check(Array.isArray(m.arrivals)&&Array.isArray(m.opportunities),'manifest flights required');
  const ids=new Set();
@@ -315,11 +318,25 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   measurement:{startMs:c.measurementStartMs,endMs:c.measurementEndMs,drainEndMs:c.drainEndMs}},
   totals,metrics,arrivals,departures,opportunities,events};
 }
+export function lockedArrivalFloorDiagnostics(manifest,c=DEFAULT_CONFIG){
+ validateManifest(manifest,c);
+ const rows=manifest.arrivals.slice(1).map((f,i)=>{
+  const lead=manifest.arrivals[i],requestedMs=timeToGoMs(f.effectiveTargetM,profileFor(f.type,f.headwindKt));
+  const physicalMinMs=minArrivalThresholdGapMs(lead,f,c);
+  return {raised:physicalMinMs>requestedMs,requestedMs,physicalMinMs};
+ });
+ const raisedTargets=rows.filter(x=>x.raised).length;
+ return {targets:rows.length,raisedTargets,shareRaised:rows.length?raisedTargets/rows.length:null,
+  source:'LOCKED_A11_EQUIVALENT_TARGET_VS_A12_UNVALIDATED_ROT_AND_HARD_MINIMA',
+  a11FitRaiseFraction:lockedA11.floorRaising.raiseFraction,
+  a11FitRaiseStatus:'REFERENCE_DIFFERENT_FLEET_AND_COHORT_NOT_A12_PERFORMANCE'};
+}
 export function pairedScenarios(manifest,c=DEFAULT_CONFIG){
  const all=[];
  for(const sequence of sequences)for(const policy of policies)all.push(simulate(manifest,c,{sequence,policy}));
  check(new Set(all.map(x=>x.meta.manifestSha256)).size===1,'paired manifest mismatch');
  return {manifestSha256:digest(manifest),scenarios:all,
+  lockedArrivalFloorRaising:lockedArrivalFloorDiagnostics(manifest,c),
   feasibility:[...sequences.flatMap(seq=>['MEDIUM_JET','HEAVY_JET','TURBOPROP'].map(cat=>
    feasibility(c,seq,cat,cat==='TURBOPROP'?'DH8D':'B738')))],
   references:c.reference,sourceStatus:'MECHANICS_ONLY_UNVALIDATED'};
@@ -331,6 +348,7 @@ export function compareDemandLevels(base=DEFAULT_CONFIG){
   const manifest=makeManifest(config),result=pairedScenarios(manifest,config);
   return {arrivalsPerHour,manifestSha256:digest(manifest),
    requestedArrivals:manifest.arrivals.length,requestedDepartureOpportunities:manifest.opportunities.length,
+   lockedArrivalFloorRaising:result.lockedArrivalFloorRaising,
    scenarios:result.scenarios,feasibility:result.feasibility};
  });
  return {levels,a11Spacing:A11_SPACING_PROVENANCE,
