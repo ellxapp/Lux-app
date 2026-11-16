@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "preset": "B1_HYPOTHETICAL_SPACING_TOOL_NON_OPERATIONAL",
+  "approvedOnPanelIssue6": [6917392204, 6917463722],
+  "baseCommit": "c012a8b",
+  "policy": ["P1_CURRENT_5NM_SLA", "P2_HYPOTHETICAL_HARD_MINIMA"],
+  "arrivalDemandPerHour": [20, 22, 24],
+  "departuresPerHour": 3,
+  "heavyDeparturesPerHour": 2,
+  "departureGapPolicies": ["DISTANCE", "TIME"],
+  "reductionFractions": [0, 0.25, 0.5, 0.75],
+  "residualSpreadNM": [0, 0.3],
+  "toolRequiredLeadDistanceNM": [6, 8, 10],
+  "observedJoin": {
+    "id": "OBSERVED_SEP2026_DEV_JOIN",
+    "source": "Claude panel#6 comment 6917463722; ADS-B development all arrivals detected on final",
+    "n": 1857,
+    "corridor": "1NM/25deg",
+    "cappedAtNM": 15,
+    "excludedWithin6NM": true,
+    "inverseCdfKnots": [[0,6],[0.1,7.9],[0.11,8],[0.25,8.6],[0.5,9],[0.7,10],[0.75,10.7],[0.84,12],[0.9,13.6],[1,15]],
+    "establishedByNM": {"8":0.89,"10":0.30,"12":0.16},
+    "status": "OBSERVED_AGGREGATE_QUANTILES_WITH_INTERPOLATED_INVERSE_CDF_NOT_RAW_TRACKS"
+  },
+  "replication": {"seeds":50,"seedStart":20261116,"bootstrapReplications":1000,"bootstrapSeed":20261117},
+  "measurement": {"warmUpMinutes":30,"measurementMinutes":60,"demandHours":2,"drainAfterDemandMinutes":60},
+  "modelLimits": {
+    "hardSurveillanceNM":3,
+    "wake":"A11_LOCKED_WAKE_MATRIX",
+    "rot":"A12_SYNTHETIC_75S_BASE_UNVALIDATED_EUROCONTROL_66_TO_109S_CONTEXT",
+    "tbs":"DEFERRED_NO_OBSERVED_WIND_BUFFER_RELATIONSHIP",
+    "ellxToolPerformance":"NOT_OBSERVED",
+    "operationalCapacityClaim":false
+  }
+}
