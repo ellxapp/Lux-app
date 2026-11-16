@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {digest} from '../core.mjs';
 import {makeManifest as a12Manifest,simulate as a12Simulate,
  DEFAULT_CONFIG as A12,CONDITIONAL,DISTANCE,TIME,minArrivalThresholdGapMs} from '../a12/model.mjs';
-import {wakeFloorNM,profileFor,timeToGoMs} from '../a11/model.mjs';
+import {wakeFloorNM,profileFor,timeToGoMs,distanceBeforeThresholdNM} from '../a11/model.mjs';
 export const CONFIG=Object.freeze(JSON.parse(readFileSync(new URL('./B1_SENSITIVITY.json',import.meta.url),'utf8')));
 export const VERSION='B1-SPACING-SENSITIVITY-CANDIDATE-1';
 const H=3600000,NM=1852;
@@ -85,7 +85,7 @@ export function runOne(m,{policy='P1',r=0,spreadNM=0,J=8,gapPolicy=DISTANCE}={})
  const queuedPairs=pairs.filter(x=>x.queueConditional);
  const reachableQueued=queuedPairs.filter(x=>x.joinDistanceNM>=J);
  const acted=pairs.filter(x=>x.b1ToolDecision);
- let minimaRaised=0,rotBound=0,violations=0;
+ let minimaRaised=0,rotBound=0,violations=0,underTargetCount=0;
  const delivery=[];
  for(let i=1;i<served.length;i++){
   const lead=served[i-1],follow=served[i],interval=follow.timeMs-lead.timeMs;
@@ -96,12 +96,14 @@ export function runOne(m,{policy='P1',r=0,spreadNM=0,J=8,gapPolicy=DISTANCE}={})
   if(Math.abs(hardMs-c.arrivalROTMs)<=c.stepMs && interval<=hardMs+c.stepMs)rotBound++;
   const targetNM=follow.b1AppliedTargetM?follow.b1AppliedTargetM/NM:follow.lockedTargetM/NM;
   if(follow.b1ToolDecision&&timeToGoMs(follow.b1AppliedTargetM,fp)<hardMs)minimaRaised++;
+  const underTarget=interval+1<timeToGoMs((follow.b1AppliedTargetM??follow.lockedTargetM),fp);
+  if(underTarget)underTargetCount++;
   delivery.push({id:follow.id,intervalS:interval/1000,
-   thresholdEquivalentNM:interval/1000*160/3600,
+   thresholdEquivalentNM:distanceBeforeThresholdNM(interval,fp),
    selectedTargetNM:targetNM,hardMinNM:hardNM,hardMinS:hardMs/1000,
    observedJoinNM:follow.joinDistanceNM,queued:follow.queueConditional,
    reached:follow.joinDistanceNM>=J,acted:!!follow.b1ToolDecision,
-   underTarget:interval+1<timeToGoMs((follow.b1AppliedTargetM??follow.lockedTargetM),fp),
+   underTarget,
    decision:follow.b1ToolDecision??null});
  }
  const inWindow=x=>x.timeMs>=c.measurementStartMs&&x.timeMs<c.measurementEndMs;
@@ -122,7 +124,15 @@ export function runOne(m,{policy='P1',r=0,spreadNM=0,J=8,gapPolicy=DISTANCE}={})
    queuedPairs:queuedPairs.length,reachableQueuedPairs:reachableQueued.length,
    reachableQueuedShare:queuedPairs.length?reachableQueued.length/queuedPairs.length:null,
    toolActedPairs:acted.length,rotBindingPairs:rotBound,hardMinRaisedPairs:minimaRaised,
-   hardMinimumViolations:violations,deliveredIntervalMedianS:quant(delivery.map(x=>x.intervalS),.5),
+   rotBindingShare:pairs.length?rotBound/pairs.length:null,
+   hardMinRaisedShare:acted.length?minimaRaised/acted.length:null,
+   hardMinimumViolations:violations,underDeliveredTargetPairs:underTargetCount,
+   deliveredIntervalP10S:quant(delivery.map(x=>x.intervalS),.1),
+   deliveredIntervalMedianS:quant(delivery.map(x=>x.intervalS),.5),
+   deliveredIntervalP90S:quant(delivery.map(x=>x.intervalS),.9),
+   deliveredSpacingP10NM:quant(delivery.map(x=>x.thresholdEquivalentNM),.1),
+   deliveredSpacingMedianNM:quant(delivery.map(x=>x.thresholdEquivalentNM),.5),
+   deliveredSpacingP90NM:quant(delivery.map(x=>x.thresholdEquivalentNM),.9),
    deliveredTargetMedianNM:quant(delivery.map(x=>x.selectedTargetNM),.5),
    measurementStartMs:c.measurementStartMs,measurementEndMs:c.measurementEndMs,
    drainEndMs:c.drainEndMs},delivery,departures:run.departures,
