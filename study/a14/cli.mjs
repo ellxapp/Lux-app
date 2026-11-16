@@ -5,7 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {resolve,dirname} from 'node:path';
 import {canonical,digest} from '../core.mjs';
 import {CONFIG,validate,VERSION,BASELINE,SENSITIVITY,
- feasibleMixedGap,runReplication} from './model.mjs';
+ feasibleMixedGap,runReplication,makeManifest,simulate,classifyMetar,casaDecision} from './model.mjs';
 
 const args=process.argv.slice(2),idx=args.indexOf('--out');
 const out=resolve(idx<0?'/tmp/a14-lvp-candidate.json':args[idx+1]);
@@ -16,6 +16,25 @@ const head=git('rev-parse','HEAD');
 if(git('status','--porcelain'))throw Error('Candidate requires clean Git tree');
 const c=validate(JSON.parse(readFileSync(new URL('./MECHANICS_ONLY.json',import.meta.url),'utf8')));
 const r=runReplication(c);
+const missFixture=makeManifest(c,{seed:42,arrivalOnly:true});
+missFixture.arrivals[0].heavyCriticalAreaOccupied=true;
+missFixture.arrivals[0].criticalHeavyInboundNM=11;
+const missRun=simulate(missFixture,c,{entryPolicy:BASELINE});
+const catIOnly=casaDecision({arrival:{id:'SYN-CAT-I',catIOnlyRequested:true},
+ phase:'NOTIFICATION',taxiInCasa:true,followerAt2NmMs:1000,
+ leaderLandingRunEndMs:2000,casaClearMs:3000},c);
+const defaultCasa=casaDecision({arrival:{id:'SYN-CAT-II-III'},phase:'NOTIFICATION',
+ taxiInCasa:true,followerAt2NmMs:1000,leaderLandingRunEndMs:2000,
+ casaClearMs:3000},c);
+const explicitEventFixtures={
+ heavyCriticalMiss:{flightId:missRun.arrivals[0].id,
+  attemptId:missRun.arrivals[0].attemptId,
+  missedApproaches:missRun.totals.missedApproaches,
+  events:missRun.events.filter(x=>x.event==='MISSED_APPROACH'),
+  originalDemand:missRun.totals.arrivalRequests},
+ catIOnlyTaxiCasa:catIOnly,defaultFullCasa:defaultCasa,
+ exactly200Ft:classifyMetar({visibilityM:5000,ceilingFt:200,rvrAM:1200},c)
+};
 const report={schema:14,status:'MECHANICS_ONLY_UNVALIDATED_WITH_WINTER_DESCRIPTIVES',
  headSha:head,baseMainSha:c.baseMainSha,version:VERSION,configSha256:digest(c),
  provenance:c.sources,weatherSource:c.lvpStateSource,
@@ -29,6 +48,7 @@ const report={schema:14,status:'MECHANICS_ONLY_UNVALIDATED_WITH_WINTER_DESCRIPTI
  winterFeasibility:r.baselineMixedFeasibility,
  conditionalEntrySensitivity:r.conditionalSensitivity,
  scenarios:r.cases,
+ explicitEventFixtures,
  references:r.observedWinter,
  warnings:r.warnings};
 mkdirSync(dirname(out),{recursive:true});
@@ -49,4 +69,4 @@ const baselineSensitivity=Object.values(['MEDIUM','HEAVY']).map(category=>({
 console.log(canonical({headSha:head,candidateSha256:digest(payload),configSha256:digest(c),
  version:VERSION,status:report.status,seedCount:c.scenario.seedCount,scenarioCount:r.cases.length,
  feasibility:r.baselineMixedFeasibility,observedBelowMinShare:report.observedShareBelowBaselineMin,
- baselineSensitivity,summary:slim,outputPath:out}));
+ baselineSensitivity,explicitEventFixtures,summary:slim,outputPath:out}));
