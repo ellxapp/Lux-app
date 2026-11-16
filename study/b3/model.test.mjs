@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CONFIG,validate,leaderClass,chooseExit,exitChoices,clearanceRange,
- clearanceCdf,clearanceQuantile,clearanceClassMean,clearanceTime,
+ clearanceCdf,clearanceQuantile,clearanceClassMean,clearanceUpperBound,
+ nextExit,actualExit,clearanceComponents,clearanceTime,
  followerTimeMs,followerDistanceNM,requiredIntervalMs,table,
  manifest,simulate,reproduceA14,exactBinomial,runSweep} from './model.mjs';
 import {digest} from '../core.mjs';
@@ -31,20 +32,22 @@ test('estimated geometry and ±25% sensitivity, separate ROT vs CASA Tclear',()=
  assert.equal(clearanceTime('D2',.5,1.25),106.25);
  assert.equal(CONFIG.syntheticRunwayVacateMs,90000);
 });
-test('L2 table is sized analytically from leader-class uniform-mixture clearance quantiles',()=>{
+test('R1 deterministic L1 bound and R2 analytic L2 from missed-exit mixture',()=>{
  const l1=table({policy:'L1'}),l2=table({policy:'L2',target:.005});
  assert.equal(l1.TP.clearMeanS,91.25);
- assert.equal(l1.TP.clearanceTargetS,101.25);
+ assert.equal(l1.TP.clearanceTargetS,clearanceUpperBound('TP'));
  for(const cls of ['TP','MEDIUM_JET','HEAVY']){
   const q=l2[cls].clearanceTargetS;
-  assert.ok(Math.abs(clearanceCdf(cls,q)-.995)<1e-9);
+  assert.ok(Math.abs(clearanceCdf(cls,q,1,'EQUAL_SPLIT',.02)-.995)<1e-9);
+  assert.equal(l1[cls].clearanceTargetS,clearanceUpperBound(cls));
+  assert.ok(l1[cls].clearanceTargetS>=q);
   assert.equal(l2[cls].quantile,.995);
   assert.ok(q>=clearanceClassMean(cls));
   assert.ok(l2[cls].sizing.startsWith('ANALYTIC'));
  }
  for(const p of CONFIG.l2TargetGoAroundRates){
   const t=table({policy:'L2',target:p});
-  assert.ok(Math.abs(clearanceCdf('HEAVY',t.HEAVY.clearanceTargetS)-(1-p))<1e-9);
+  assert.ok(Math.abs(clearanceCdf('HEAVY',t.HEAVY.clearanceTargetS,1,'EQUAL_SPLIT',.02)-(1-p))<1e-9);
  }
 });
 test('follower 2 NM time is type-specific; interval and NM inversion consistent',()=>{
@@ -68,7 +71,7 @@ test('immutable matched manifests: 10-16 and 20/h, departure 0 or 2, no random C
   assert.equal(m.arrivals.length,rate*2);
   assert.equal(m.departures.length,depPerHour*2);
   assert.ok(m.arrivals.every(a=>a.catIOnlyRequested===false&&a.exitQuantile>=0&&
-   a.clearanceQuantile>=0&&a.heavyCriticalAreaOccupied===false));
+   a.clearanceQuantile>=0&&a.missedExitQuantile>=0&&a.heavyCriticalAreaOccupied===false));
   assert.equal(digest(m),digest(manifest({rate,depPerHour,seed:20261116})));
  }
 });
@@ -96,8 +99,8 @@ test('go-around is an attempt event at follower 2 NM, not a served landing',()=>
  m.arrivals[0].exitQuantile=.999;
  m.arrivals[0].clearanceQuantile=.999;
  m.arrivals[1].type='B738';m.arrivals[1].wake='M';
- // Increase clear time on a single leader through an explicit synthetic draw.
- const x=simulate(m,{policy:'L1',scale:1.25,mix:'HEAVY_ALL_END'});
+ // Expose an unusual long-tail clearance under the permissive L2 quantile.
+ const x=simulate(m,{policy:'L2',target:.01,scale:1.25,mix:'HEAVY_ALL_END',pMiss:.1});
  assert.equal(x.totals.arrivalRequests,m.arrivals.length);
  assert.ok(x.totals.casaGoArounds>=1,'constructed long-tail CASA clearance must cause missed approach');
  assert.ok(x.attempts.some(a=>a.reason==='CASA_OCCUPIED_AT_2NM'));
@@ -119,7 +122,7 @@ test('Clopper-Pearson exact confidence bounds include rare zero and all-event ca
  assert.equal(one.method,'CLOPPER_PEARSON_EXACT');
 });
 test('50 paired seeds produce L0/L1/L2 under both DEP cases and exact-binomial outputs',()=>{
- const result=runSweep({rates:[10],seedCount:50,scales:[1],mixes:['EQUAL_SPLIT']});
+ const result=runSweep({rates:[10],seedCount:50,scales:[1],mixes:['EQUAL_SPLIT'],missedExitProbabilities:[.05]});
  assert.equal(result.scenarioCount,10);
  assert.ok(result.scenarios.every(s=>s.seedCount===50&&s.pairedEqualManifests&&
   s.perSeed.length===50&&s.casaGoAroundExact95));
@@ -155,4 +158,47 @@ test('binding shares have explicit denominators; exact CASA intervals separate r
   assert.ok(p===null||(p>=0&&p<=1),key);
  }
  assert.equal(x.totals.arrivalRequests,x.totals.servedArrivalsByDrain+x.totals.censoredArrivals);
+});
+
+test('R2 next-exit transitions and analytic tail CDF are explicit',()=>{
+ assert.equal(nextExit('D2'),'E');assert.equal(nextExit('E'),'G');
+ assert.equal(nextExit('G'),'END');assert.equal(nextExit('END'),'END');
+ assert.equal(actualExit('D2',.01,.02),'E');
+ assert.equal(actualExit('D2',.03,.02),'D2');
+ assert.equal(actualExit('G',.09,.1),'END');
+ for(const pMiss of CONFIG.missedExitProbabilities){
+  const components=clearanceComponents('TP',1,'EQUAL_SPLIT',pMiss);
+  assert.ok(Math.abs(components.reduce((a,b)=>a+b.weight,0)-1)<1e-12);
+  assert.ok(components.some(v=>v.exit==='G'&&v.missed));
+  for(const cls of ['TP','MEDIUM_JET','HEAVY']){
+   const bound=table({policy:'L1',pMiss})[cls].clearanceTargetS;
+   for(const x of clearanceComponents(cls,1,'EQUAL_SPLIT',pMiss))
+    assert.ok(bound>=x.range[1]-1e-10);
+   const q=table({policy:'L2',target:.001,pMiss})[cls].clearanceTargetS;
+   assert.ok(Math.abs(clearanceCdf(cls,q,1,'EQUAL_SPLIT',pMiss)-.999)<1e-9);
+  }
+ }
+});
+test('R1 L1 deterministic table prevents sampled CASA go-around in every exit extreme',()=>{
+ for(const pMiss of CONFIG.missedExitProbabilities)
+ for(const scale of CONFIG.tClearScale)
+ for(const mix of CONFIG.exitMixScenarios){
+  const x=simulate(manifest({rate:20,depPerHour:2}),{policy:'L1',scale,mix,pMiss});
+  assert.equal(x.totals.casaGoArounds,0);
+ }
+});
+test('R2 analytic tails separate 1% and 0.1% targets',()=>{
+ const a=table({policy:'L2',target:.01,pMiss:.02});
+ const b=table({policy:'L2',target:.001,pMiss:.02});
+ assert.ok(b.TP.clearanceTargetS>a.TP.clearanceTargetS);
+ assert.ok(b.HEAVY.clearanceTargetS>=a.HEAVY.clearanceTargetS);
+ assert.ok(table({policy:'L2',target:.01,pMiss:.1}).TP.clearanceTargetS>=a.TP.clearanceTargetS);
+});
+test('N1 winter cases 10–16 are headline, 20/h is probe',()=>{
+ const x=runSweep({rates:[16,20],seedCount:50,scales:[1],
+  mixes:['EQUAL_SPLIT'],missedExitProbabilities:[.05]});
+ assert.equal(x.scenarioCount,20);
+ assert.ok(x.scenarios.filter(z=>z.rate===16).every(z=>z.headlineWinter&&!z.saturatedProbe));
+ assert.ok(x.scenarios.filter(z=>z.rate===20).every(z=>z.saturatedProbe&&!z.headlineWinter));
+ assert.ok(x.scenarios.every(z=>z.pMiss===.05&&z.pairedEqualManifests));
 });
