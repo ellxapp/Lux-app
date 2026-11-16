@@ -157,7 +157,9 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
  const c=a14Config(depPerHour),tab=policy==='L0'?null:table({policy,target,scale,mix});
  const arrivals=[],departures=[],events=[],attempts=[],holds=[],depUsed=new Set();
  const reqs=m.departures;
- let prev=null,missCasa=0,missCritical=0,censoredArrivals=0,departureGateBindings=0,stopped=false;
+ let prev=null,missCasa=0,missCritical=0,censoredArrivals=0,departureGateBindings=0,
+  departurePhysicalBindings=0,departureEvaluated=0,hardMinBindings=0,
+  rotBindings=0,casaTableBindings=0,spacingPairsEvaluated=0,stopped=false;
  for(const f of m.arrivals){
   if(stopped){censoredArrivals++;arrivals.push({...f,status:'censored',thresholdMs:null,
    delayMs:null,reason:'DRAIN_HORIZON',attemptCount:0});continue;}
@@ -171,11 +173,20 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
    arrivals.push(row);events.push({id:f.id,event:'ARR_THRESHOLD',timeMs:thresholdMs});prev=row;continue;
   }
   const gap=requiredIntervalMs(prev,f,{policy,target,scale,mix});
+  const hardMinGap=followerTimeMs(Math.max(c.synthetic.hardSeparationNM,
+   wakeFloorNM(prev.wake,f.wake)),f.type);
+  const casaTableGap=policy==='L0'?null:
+   Math.round(tab[prev.leaderClass].clearanceTargetS*1000)+followerTimeMs(2,f.type);
+  spacingPairsEvaluated++;
+  if(Math.abs(gap-hardMinGap)<=1000)hardMinBindings++;
+  if(Math.abs(gap-c.synthetic.arrivalROTMs)<=1000)rotBindings++;
+  if(casaTableGap!==null&&Math.abs(gap-casaTableGap)<=1000)casaTableBindings++;
   const requestThreshold=Math.max(f.requestMs,prev.thresholdMs+gap);
   let threshold=requestThreshold;
   const d=reqs.find(x=>!depUsed.has(x.id)&&x.requestMs<=threshold);
   let depCandidate=null;
   if(d){
+   departureEvaluated++;
    const passage=Math.max(d.requestMs,prev.runwayVacatedMs);
    const airborne=passage+c.synthetic.departureLineupMs+c.synthetic.departureRollToAirborneMs;
    const depClear=airborne+c.synthetic.departureRunwayClearAfterAirborneMs;
@@ -183,7 +194,12 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
     followerTimeMs(c.protection.holdingInboundNM[d.category],f.type)+1000; // 1s conservative rounding guard
    const constrained=Math.max(threshold,passage+holdTime,depClear);
    depCandidate={d,passage,airborne,depClear,holdTime};
-   if(constrained>threshold)departureGateBindings++;
+   if(passage+holdTime>Math.max(threshold,depClear)){
+    departureGateBindings++;
+    holds.push({id:d.id,reason:'ARRIVAL_DELAY_TO_PRESERVE_10_15NM_HOLDING_POINT_GATE',
+     passageMs:passage,originalThresholdMs:threshold,requiredThresholdMs:passage+holdTime});
+   }
+   if(depClear>Math.max(threshold,passage+holdTime))departurePhysicalBindings++;
    threshold=constrained;
   }
   // An intentionally provided critical-area occupancy is handled independently.
@@ -279,6 +295,16 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
    arrivalIntervalMedianS:quant(pairIntervals,.5),
    arrivalSpacingMedianNM:quant(servedArr.slice(1).map(x=>x.deliveredSpacingNM),.5),
    departureHoldingGateBindings:departureGateBindings,
+   departureHoldingGateShare:departureEvaluated?departureGateBindings/departureEvaluated:null,
+   departurePhysicalBindings,
+   departureOpportunitiesEvaluated:departureEvaluated,
+   spacingPairsEvaluated,
+   hardMinimumPlanningBindings:hardMinBindings,
+   hardMinimumPlanningBindingShare:spacingPairsEvaluated?hardMinBindings/spacingPairsEvaluated:null,
+   runwayRotPlanningBindings:rotBindings,
+   runwayRotPlanningBindingShare:spacingPairsEvaluated?rotBindings/spacingPairsEvaluated:null,
+   casaTablePlanningBindings:casaTableBindings,
+   casaTablePlanningBindingShare:spacingPairsEvaluated?casaTableBindings/spacingPairsEvaluated:null,
    casaGoAroundRatePerExposedAttempt:exposures?missCasa/exposures:null,
    casaGoAroundRatePerOriginalArrival:m.arrivals.length?missCasa/m.arrivals.length:null,
    capacityEligible:false},
@@ -357,8 +383,17 @@ export function runSweep({seedCount=CONFIG.seeds,rates=[...CONFIG.demandArrivalP
     const totals=runs.map(x=>x.totals);
     const casas=totals.reduce((v,x)=>v+x.casaGoArounds,0),
      exposures=totals.reduce((v,x)=>v+x.casaExposedFollowerAttempts,0);
+    const originalRequests=totals.reduce((v,x)=>v+x.arrivalRequests,0);
+    const exitCounts={};
+    const clearValues=[];
+    for(const run of runs)for(const a of run.arrivals)if(a.status==='served'){
+     exitCounts[a.exit]=(exitCounts[a.exit]||0)+1;clearValues.push(a.sampledTclearS);
+    }
     const meanKeys=['arrivalsPerHour','departuresPerHour','arrivalDelayMeanS','arrivalDelayP90S',
-     'arrivalIntervalMedianS','arrivalSpacingMedianNM','departureHoldingGateBindings'];
+     'arrivalIntervalMedianS','arrivalSpacingMedianNM','departureHoldingGateBindings',
+     'departureHoldingGateShare','departurePhysicalBindings',
+     'hardMinimumPlanningBindingShare','runwayRotPlanningBindingShare',
+     'casaTablePlanningBindingShare'];
     const averages=Object.fromEntries(meanKeys.map(k=>[k,mean(a1.map(x=>x[k]).filter(Number.isFinite))]));
     const totalsByDrain=['servedArrivalsByDrain','servedDeparturesByDrain',
      'censoredArrivals','censoredDepartures','casaGoArounds','heavyCriticalGoArounds'];
@@ -371,6 +406,10 @@ export function runSweep({seedCount=CONFIG.seeds,rates=[...CONFIG.demandArrivalP
       x.meta.manifestHash===base[i].meta.manifestHash),
      means:averages,byDrain:drain,pairedByDrain:drainPaired,
      casaGoAroundExact95:exposures?exactBinomial(casas,exposures):null,
+     casaPerOriginalArrivalExact95:originalRequests?exactBinomial(casas,originalRequests):null,
+     sampledExitCounts:exitCounts,servedExitDenominator:clearValues.length,
+     sampledTclearSeconds:{p10:quant(clearValues,.1),median:quant(clearValues,.5),
+      p90:quant(clearValues,.9)},
      pairedPolicyMinusL0:deltas,
      leaderTable:policy==='L0'?null:runs[0].table,
      perSeed:runs.map((x,i)=>({seed:ms[i].seed,hash:digest(ms[i]),
