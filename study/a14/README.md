@@ -31,9 +31,18 @@ and is explicitly not current ELLX LVP practice. The observed proxy
 dataset may contain METAR-defined LVP conditions when operational LVP
 was not declared, and 10NM is a planning "should", not a hard
 separation. These are **plausible explanations, not verified causes**.
-The **share of observed winter pairs below the modelled minimum is
-NOT REPORTED in the aggregate source** and is expressly `null`
-pending an authorised calculation. Never infer it from P10.
+Claude subsequently reported the **observed** share for the METAR-proxy
+mixed-departure sample: **13 of 29 pairs, approximately 45%, below the
+assumed 315s medium baseline** (fog **12/23 = 52%**, cloud-only **1/6**),
+and **76% below the assumed 427.5s heavy baseline**. The median is
+320s and P10/P25 are 266/281s. The sample cannot separate medium
+and heavy departures. These are **observational comparisons**, not
+evidence that an actual declared-LVP procedure was violated. Their
+source is Claude's PR #5 review `5920292883` (low–moderate
+confidence, small sample). Possible explanations include weather
+proxy ≠ declared LVP, using clearance rather than holding-point
+passage as a reference, and flexible application. The figures do
+not distinguish these hypotheses. No observed violation is asserted.
 
 ## Source-tagged procedure decisions
 
@@ -101,13 +110,29 @@ The first synthetic request fixture is **12 ARR/h and 3 DEP/h**, with
 two hours of demand, a one-hour measurement window and a separate drain.
 It produces **12 ARR/h** in the measured hour, with a median
 arrival-only interval of approximately **300.2s**, consistent in
-*interval scale* with the winter fog median **304s**. But the actual
-modelled arrival-only median separation is approximately **13.34NM**,
-**not** the observed 10.01NM fog median and **not** a fitted 10NM
-delivery distribution. This illustrates why an inverse-interval rate
-cannot be converted into observed delivered distance at a fixed
-synthetic 160kt speed. Do not describe the 50-seed run as a winter
-spacing calibration or validation.
+*interval scale* with the winter fog median **304s**. The all-pair simulated
+arrival-only median separation is approximately **13.34NM**, compared
+with the observed ADS-B fog median **10.01NM**, but these **are not the
+same population**. The original simulator reports **every** consecutive
+synthetic ARR pair; the observational distance sample contains only
+**captured** pairs, often with queued/short gaps and with longer
+gaps lost to capture.
+
+**D1** therefore reports **floor-bound queued pairs** separately from
+all synthetic pairs. A floor-bound pair is a follower whose original
+request is at/before the prior threshold plus the 10NM nominal
+planning floor **and whose final delivered gap equals that 10NM
+floor**, rather than being increased by CASA/other events. The
+separate floor-bound median is approximately 10NM at a synthetic
+constant 160kt, by **construction**. This is a mechanical diagnostic,
+**not** an observation/capture simulation or an independent match
+to the 17 available fog ADS-B pair distances.
+
+Compare observed arrival **intervals** with the all-pair interval
+distribution instead: fog median 304s (54 intervals), Dec LVP
+P10 221s (353 intervals). Quantiles and sample populations must
+remain separate; do not call a rate reciprocal or distance match a
+winter calibration.
 
 In mixed synthetic NOTIFICATION, the measured hour produces 12 ARR/h
 and 3 DEP/h with median arrival interval around **288s** and median
@@ -124,10 +149,26 @@ Most importantly, the *separate* hard holding-point feasibility
 calculation remains **315s medium / 427.5s heavy** for actual
 post-vacate entry versus observed mixed P10 **266s: FAIL**. The
 in-model traffic demand results do not override this procedural
-feasibility conflict. Claude's observed aggregate does not include
-the exact share of 29 LVP-with-departure intervals below 315s/427.5s;
-it remains **NOT_OBSERVED / not inferable from quantiles** pending
-an explicit aggregate calculation.
+feasibility conflict. Claude's later review supplies the *observed* 13/29 (45%) and
+76% proxy shares, without verified LVP declaration or aircraft-class
+denominators. These are **not compliance findings**.
+
+## Saturated LVP arrival-only test (D1)
+
+Separate from the original 12 ARR/h demand fixture, a **20 ARR/h
+synthetic request** workload tests saturation under NOTIFICATION and
+the exact same post-vacate-only baseline. At the illustrative
+**160kt final** and **10NM planning floor**, minimum inter-arrival
+planning time is **225s**, a geometric reciprocal of **16 arrivals/h**
+before modelling timing/CASA/ROT effects. The candidate reports
+**50 seed-level hourly throughputs**, all-pair and queued/floor-bound
+distance and interval distributions, backlog and complete request
+conservation. The resulting simulated approximately **16 ARR/h**
+is compared **descriptively** with the CAPAN 2025 **13–14/h**
+estimate reported by Claude. The gap can depend on **unvalidated LVP
+final-approach speed, ROT/CASA clearance, and synthetic scheduling
+demand**, and is **not** proof that ELLX can operate at 16/h or that
+CAPAN is inaccurate.
 
 ## What the prototype does, and does not
 
