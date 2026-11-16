@@ -324,7 +324,7 @@ export function runReplication(c=CONFIG){
    }
    return {requestedArrivalsPerHour:arrivalDemandPerHour,seedCount:rows.length,
     finalApproachSpeedKt:c.synthetic.finalApproachSpeedKt,
-    10NmFloorSeconds:secondsFromNM(10,c),
+    tenNmFloorSeconds:secondsFromNM(10,c),
     referenceCapan2025ArrivalsPerHour:c.scenario.saturatedCompareToCapan2025ArrivalsPerHour,
     referenceSourceStatus:c.scenario.saturatedReferenceStatus,
     arrivalsPerHour:desc(rows.map(x=>x.arrivalsPerHour)),
