@@ -18,13 +18,16 @@ const report={...runSweep(),headSha,configSha256:digest(CONFIG),
  referenceComments:CONFIG.approval,
  method:'EXACT_ANALYTIC_T_CLEAR_QUANTILES_L2;_REALIZED_GO_AROUNDS_CLOPPER_PEARSON'};
 mkdirSync(dirname(output),{recursive:true});writeFileSync(output,canonical(report));
-const central=report.scenarios.filter(x=>x.scale===1&&x.mix==='EQUAL_SPLIT'&&
- x.depPerHour===0&&x.rate===20);
+// One reproducible compact comparison per winter demand, DEP case and missed-exit p.
+// The complete 2250-cell matrix, exit extrema and Tclear sensitivities are in the JSON.
+const compact=x=>({rate:x.rate,depPerHour:x.depPerHour,pMiss:x.pMiss,
+ policy:x.policy,target:x.target,arrivalsPerHour:x.means.arrivalsPerHour,
+ deltaVersusL0:x.pairedPolicyMinusL0.arrivalsPerHour,
+ casaGoAroundExact95:x.casaGoAroundExact95});
+const central=report.scenarios.filter(x=>x.scale===1&&x.mix==='EQUAL_SPLIT');
 console.log(canonical({headSha,version:VERSION,configSha256:digest(CONFIG),
  output,scenarios:report.scenarioCount,pairedSeeds:CONFIG.seeds,
  baselineGate:report.feasibilityGate,
- lvpSaturatedProbe20h:central.map(x=>({policy:x.policy,target:x.target,
-  arrivalsPerHour:x.means.arrivalsPerHour,
-  deltaVersusL0:x.pairedPolicyMinusL0.arrivalsPerHour,
-  casaGoAroundExact95:x.casaGoAroundExact95})),
+ winterHeadline10to16:central.filter(x=>x.headlineWinter).map(compact),
+ saturatedProbe20:central.filter(x=>x.saturatedProbe).map(compact),
  warnings:report.warnings}));
