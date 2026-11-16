@@ -252,6 +252,25 @@ export function runReplication(c=CONFIG){
      perSeed:rows.map(r=>({seed:r.seed,manifestHash:r.manifestHash,
       totals:r.result.totals,metrics:r.result.metrics}))});
    }
+ const pairedComparisons=[];
+ for(const arrivalOnly of [true,false])
+  for(const phase of ['NORMAL','PREPARATION','NOTIFICATION']){
+   const baseline=cases.find(x=>x.arrivalOnly===arrivalOnly&&x.phase===phase&&x.entryPolicy===BASELINE);
+   const sensitivity=cases.find(x=>x.arrivalOnly===arrivalOnly&&x.phase===phase&&x.entryPolicy===SENSITIVITY);
+   const keys=['arrivalRatePerHour','departureRatePerHour','totalMovementsInHour',
+    'planningShortfalls','departureHolds'];
+   const paired=Object.fromEntries(keys.map(k=>[k,desc(baseline.perSeed.map((v,i)=>
+    sensitivity.perSeed[i].metrics[k]-v.metrics[k]))]));
+   paired.arrivalIntervalMedianS=desc(baseline.perSeed.map((v,i)=>
+    sensitivity.perSeed[i].metrics.arrivalIntervalsSeconds.median-
+    v.metrics.arrivalIntervalsSeconds.median));
+   paired.arrivalSpacingMedianNM=desc(baseline.perSeed.map((v,i)=>
+    sensitivity.perSeed[i].metrics.arrivalSpacingNM.median-
+    v.metrics.arrivalSpacingNM.median));
+   pairedComparisons.push({arrivalOnly,phase,interpretation:'HYPOTHETICAL_CONDITIONAL_MINUS_ACTUAL_POST_VACATE_BASELINE',
+    sameManifestEverySeed:baseline.perSeed.every((v,i)=>v.manifestHash===sensitivity.perSeed[i].manifestHash),
+    n:baseline.n,differences:paired});
+  }
  const medium=feasibleMixedGap(c,{category:'MEDIUM'}),heavy=feasibleMixedGap(c,{category:'HEAVY'});
  return {schema:14,status:'MECHANICS_ONLY_UNVALIDATED_WITH_WINTER_DESCRIPTIVES',
   sourceComments:c.sources.comments,baseMainSha:c.baseMainSha,version:VERSION,
@@ -264,7 +283,7 @@ export function runReplication(c=CONFIG){
    heavy:feasibleMixedGap(c,{category:'HEAVY',entryPolicy:SENSITIVITY}),
    practice:'HYPOTHETICAL_NOT_ELLX_LVP_PRACTICE'},
   arrivalOnlyFogIntervalReferenceS:304,arrivalOnly10NmPlanningNM:10,
-  cases,warnings:['METAR_PROXY not an LVP declaration',
+  cases,pairedComparisons,warnings:['METAR_PROXY not an LVP declaration',
    '10NM is planning SHOULD, not minimum separation',
    'Baseline departures enter only AFTER runway vacated',
    '266s observed mixed P10 is a feasibility conflict, NOT permission for conditional line-up',
