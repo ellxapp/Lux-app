@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CONFIG,joinDistanceNM,makeManifest,runOne,spacingDecision,pairedBootstrap,validateB1} from './model.mjs';
+import {CONFIG,joinDistanceNM,makeManifest,runOne,spacingDecision,pairedBootstrap,validateB1,runSweep} from './model.mjs';
 import {DEFAULT_CONFIG as A12,simulate as baselineSimulate,makeManifest as baselineManifest,
  CONDITIONAL,DISTANCE,TIME} from '../a12/model.mjs';
 import {digest} from '../core.mjs';
@@ -83,4 +83,57 @@ test('in a saturated request scenario, the hypothetical indicator acts only on r
  assert.ok(tool.arrivals.every(a=>!a.b1ToolDecision||
   (a.queueConditional&&a.b1ToolDecision.joinDistanceNM>=6)));
  assert.equal(tool.metrics.hardMinimumViolations,0);
+});
+
+test('R1 30/h saturated demand preserves original manifests and both baseline/drain counts',()=>{
+ const seed=20261116,m=makeManifest(30,seed);
+ assert.equal(m.arrivals.length,60);
+ assert.equal(m.opportunities.length,6);
+ assert.equal(m.opportunities.filter(d=>d.category==='HEAVY_JET').length,4);
+ const raw={...A12,seed,arrivalCount:60,arrivalRequestStepMs:120000};
+ for(const gapPolicy of [DISTANCE,TIME]){
+  const baseline=baselineSimulate(baselineManifest(raw,'OBSERVED_LIKE_3_PER_H_2_HEAVY'),raw,
+   {sequence:CONDITIONAL,policy:gapPolicy});
+  const zero=runOne(m,{policy:'P2',r:0,spreadNM:.3,J:10,gapPolicy});
+  assert.equal(zero.metrics.arrivalRatePerHour,baseline.metrics.arrivalRatePerHour);
+  assert.equal(zero.metrics.departureRatePerHour,baseline.metrics.departureRatePerHour);
+  assert.equal(zero.metrics.servedArrivalsByDrain,baseline.arrivals.filter(a=>a.status==='served').length);
+  assert.equal(zero.metrics.servedDeparturesByDrain,baseline.departures.filter(d=>d.status==='served').length);
+  assert.equal(zero.metrics.demandArrivals,zero.metrics.servedArrivalsByDrain+zero.metrics.censoredArrivals);
+  assert.equal(zero.metrics.demandDepartures,zero.metrics.servedDeparturesByDrain+zero.metrics.censoredDepartures);
+ }
+});
+test('N1: served-by-drain counts distinguish one-hour boundary shifts and conserve requests',()=>{
+ const m=makeManifest(20,20261117);
+ const baseline=runOne(m,{r:0,gapPolicy:DISTANCE});
+ for(const policy of ['P1','P2']){
+  const tool=runOne(m,{policy,r:.75,spreadNM:0,J:8,gapPolicy:DISTANCE});
+  for(const x of [baseline,tool]){
+   assert.equal(x.metrics.demandArrivals,x.metrics.servedArrivalsByDrain+x.metrics.censoredArrivals);
+   assert.equal(x.metrics.demandDepartures,x.metrics.servedDeparturesByDrain+x.metrics.censoredDepartures);
+   assert.ok(x.metrics.arrivalRatePerHour<=x.metrics.servedArrivalsByDrain);
+   assert.ok(x.metrics.departureRatePerHour<=x.metrics.servedDeparturesByDrain);
+  }
+  assert.equal(tool.meta.manifestHash,baseline.meta.manifestHash);
+ }
+});
+test('R1 sweep covers all 30/h policy × J × r × spread × departure-gap cells with paired N1 fields',()=>{
+ const x=runSweep({rates:[30],seeds:50});
+ assert.equal(x.results.length,96);
+ assert.ok(x.results.every(row=>row.saturatedArrivalDemand&&row.n===50&&
+  row.identicalPairedManifests&&row.syntheticCapacityComparison&&
+  row.syntheticCapacityComparison.requestRatePerHour===30));
+ for(const policy of ['P1','P2'])for(const J of [6,8,10])for(const r of [0,.25,.5,.75])
+  assert.equal(x.results.filter(z=>z.policy===policy&&z.J===J&&z.r===r).length,4);
+ for(const row of x.results){
+  const a=row.pairedToolMinusBaseline;
+  assert.equal(a.servedArrivalsByDrain.n,50);
+  assert.equal(a.servedDeparturesByDrain.n,50);
+  assert.equal(a.arrivalRatePerHour.n,50);
+  assert.equal(a.arrivalRatePerHour.interval95.length,2);
+  assert.equal(row.syntheticCapacityComparison.pairedToolMinusBaseline,a.arrivalRatePerHour);
+  if(row.r===0)for(const key of ['arrivalRatePerHour','departureRatePerHour',
+   'servedArrivalsByDrain','servedDeparturesByDrain'])
+   assert.deepEqual(a[key].interval95,[0,0]);
+ }
 });
