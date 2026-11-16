@@ -15,7 +15,7 @@ export const ASSUMPTIONS=Object.freeze({
   missingFixP10S:720, // UNVALIDATED placeholder for absent 06/fix strata
   pathStretchEquivalentSpeedKt:150, // UNVALIDATED, not actual aircraft speed
   entryRingJitterS:180, // UNVALIDATED; calibrated synthetic bunching
-  entryRingJitterByRateS:{}, // UNVALIDATED stratum-specific sensitivity
+  entryRingJitterByRateS:{20:0}, // UNVALIDATED fitted high-demand input regularity
   clusterFactorByRate:{6:.1,11:.1,14:.1,19:.15,20:1}, // UNVALIDATED: S0 fit to B2a bins
   tacticalSwapRate:0, // UNVALIDATED only when geometry fails
   b1Policy:'P1',b1Reduction:.75,b1ResidualSpreadNM:.3,b1LeadNM:8,
