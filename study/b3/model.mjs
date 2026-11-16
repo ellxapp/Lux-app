@@ -180,7 +180,7 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
    const airborne=passage+c.synthetic.departureLineupMs+c.synthetic.departureRollToAirborneMs;
    const depClear=airborne+c.synthetic.departureRunwayClearAfterAirborneMs;
    const holdTime=policy==='L0'?Math.round(secondsFromNM(c.protection.holdingInboundNM[d.category],c)*1000):
-    followerTimeMs(c.protection.holdingInboundNM[d.category],f.type);
+    followerTimeMs(c.protection.holdingInboundNM[d.category],f.type)+1000; // 1s conservative rounding guard
    const constrained=Math.max(threshold,passage+holdTime,depClear);
    depCandidate={d,passage,airborne,depClear,holdTime};
    if(constrained>threshold)departureGateBindings++;
