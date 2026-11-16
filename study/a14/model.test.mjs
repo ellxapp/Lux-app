@@ -150,7 +150,7 @@ test('L11 observed winter source has separate denominators and remains report-on
 });
 test('L12 only unvalidated named assumptions and source-tagged procedure metadata',()=>{
  assert.equal(validate(CONFIG),CONFIG);
- assert.equal(VERSION,'A1.4-LVP-post-vacate-candidate-1');
+ assert.equal(VERSION,'A1.4-D1-floor-bound-saturation-candidate-2');
  assert.equal(CONFIG.sources.sections.holdingPoint,'PENDING_VERIFICATION');
  assert.equal(CONFIG.protection.conditionalSensitivity,SENSITIVITY);
  assert.equal(CONFIG.outputs.operationalCapacityClaim,false);
@@ -188,4 +188,46 @@ test('L10 paired conditional-minus-baseline differences use identical requests i
   assert.equal(x.differences.departureRatePerHour.n,50);
   assert.equal(x.interpretation,'HYPOTHETICAL_CONDITIONAL_MINUS_ACTUAL_POST_VACATE_BASELINE');
  }
+});
+
+test('D1 normal 12/h demand reports all pairs separate from 10NM floor-bound queued pairs',()=>{
+ const m=makeManifest(CONFIG,{seed:20261116,arrivalOnly:true});
+ const r=simulate(m,CONFIG,{phase:'NOTIFICATION',entryPolicy:BASELINE});
+ const a=r.metrics.floorBoundArrivalPairs;
+ assert.equal(a.totalPairs,m.arrivals.length-1);
+ assert.ok(a.count<a.totalPairs);
+ assert.equal(r.metrics.arrivalSpacingNM.n,a.totalPairs);
+ assert.ok(r.metrics.arrivalIntervalsSeconds.median>225);
+ assert.equal(a.observedCaptureProxy,false);
+});
+test('D1 saturated LVP arrival-only demand exposes ~16/h and floor-bound ~10NM without a capacity claim',()=>{
+ const c=CONFIG,man=makeManifest(c,{seed:20261116,arrivalOnly:true,
+  arrivalDemandPerHour:c.scenario.saturatedArrivalDemandPerHour});
+ assert.equal(man.arrivals.length,40);
+ const x=simulate(man,c,{phase:'NOTIFICATION',entryPolicy:BASELINE});
+ const floor=x.metrics.floorBoundArrivalPairs;
+ assert.ok(floor.count>20);
+ assert.ok(Math.abs(floor.distanceNM.median-10)<.001);
+ assert.ok(Math.abs(floor.intervalSeconds.median-225)<.01);
+ const r=runReplication(c),sat=r.saturatedArrivalOnly;
+ assert.equal(sat.seedCount,50);
+ assert.equal(sat.requestedArrivalsPerHour,20);
+ assert.ok(sat.arrivalsPerHour.mean>=15&&sat.arrivalsPerHour.mean<=17);
+ assert.ok(sat.floorBoundPairSpacingMedianNM.n===50);
+ assert.ok(Math.abs(sat.floorBoundPairSpacingMedianNM.mean-10)<.001);
+ assert.equal(sat.allDemandConserved,true);
+ assert.deepEqual(sat.referenceCapan2025ArrivalsPerHour,[13,14]);
+ assert.match(sat.sourceStatus,/NOT_OPERATIONAL_CAPACITY/);
+});
+test('D1 observed 13/29 and 76% are source observations only, not inferred or compliance evidence',()=>{
+ const w=CONFIG.observedWinter.lvpWithDeparture;
+ assert.equal(w.belowBaselineMediumMinimum.belowCount,13);
+ assert.equal(w.belowBaselineMediumMinimum.totalPairs,29);
+ assert.equal(w.belowBaselineMediumMinimum.roundedPercent,45);
+ assert.equal(w.belowBaselineHeavyMinimum.roundedPercent,76);
+ assert.equal(w.belowBaselineHeavyMinimum.typeStratified,false);
+ assert.deepEqual(w.belowBaselineMediumMinimum.fog,{below:12,total:23});
+ assert.deepEqual(w.belowBaselineMediumMinimum.cloudOnly,{below:1,total:6});
+ assert.equal(w.intervalP25S,281);
+ assert.match(w.shareStatus,/NOT_COMPLIANCE/);
 });
