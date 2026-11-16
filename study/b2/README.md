@@ -2,6 +2,22 @@
 
 **NOT OPERATIONAL / NOT A CERTIFIED CAPACITY ESTIMATE.** Candidate on `b2-sequencing`, based on `main 102d02b`. See ellxapp/panel issue #6: B2a [6921599723](https://github.com/ellxapp/panel/issues/6#issuecomment-6921599723), [6921795946](https://github.com/ellxapp/panel/issues/6#issuecomment-6921795946), Claude's S0 guidance [6922243126](https://github.com/ellxapp/panel/issues/6#issuecomment-6922243126), and actual TMA-boundary addendum [6922589286](https://github.com/ellxapp/panel/issues/6#issuecomment-6922589286). CLKEX in ANA is displayed as **RITAX (Brussels sector)** per comment 6922696104; the raw field remains CLKEX.
 
+## Headline findings at realistic demand (20–24 ARR requests/h)
+
+**DISTANCE departure-gap planning; mean seconds per arrival; S1 planning at actual TMA entry. All S1 and B1-P1 interventions are HYPOTHETICAL, not measured ELLX performance.** “TMA delay” in this table means modelled excess transit over a B2a P10 unimpeded proxy, not a directly observed ATC delay. **Holding is model-assigned, NOT observed.** B2a measured total transit excess and published-transition path-stretch envelopes; it did **not** independently measure airborne holding. Each model holding value is the residual after applying assumed speed/path-extension allocation (including the unvalidated 150 kt conversion and vectored cap). It must not be described as an empirical holding estimate.
+
+| ARR requests/h | S0: excess / assumed holding (s) | S1 at TMA entry: excess / assumed holding (s) | B1-P1 spacing tool: excess / assumed holding (s) | S1 + B1-P1: excess / assumed holding (s) |
+|---|---:|---:|---:|---:|
+| 20 | 116 / 52 | 116 / 34 | 85 / 32 | 85 / 19 |
+| 22 | 237 / 142 | 242 / 115 | 140 / 65 | 132 / 40 |
+| 24 | 410 / 305 | 416 / 272 | 190 / 102 | 173 / 63 |
+
+**Interpretation (low–moderate confidence, conditional on model assumptions):** S1 alone does not materially increase arrivals or reduce total excess transit; it hypothetically reallocates delay from assumed holding into speed and path extension. B1-P1 reduces the modelled total excess; combining S1 and B1-P1 reduces the remaining **model-assigned** holding. Planning from TMA entry is strongest, eight minutes is close behind, and five minutes performs worse, subject to each flow's actual TMA entry constraint. Bounded S2 type/wake swaps have no material additional effect. None of these effects establishes AMAN effectiveness or ATC capacity.
+
+### Saturated 30 ARR/h: capacity probe ONLY, not a delay estimate
+
+The 30/h input deliberately saturates the synthetic scheduler. Its simulated `holdingMeanS` (approximately 870 s for S0 and 533 s for S1-at-entry + B1-P1 in the reviewed candidate) **grows with the length of the synthetic session**. These values are accumulation/backlog diagnostics, **not estimated TMA holding times or operational delay** and are excluded from the headline comparison. One-hour served rates in this case are labelled *hypothetical saturation throughput probe*, not certified runway capacity. The unobserved holding/path-stretch allocation caveat applies equally at 20/22/24/h.
+
 ## Gate sequence, no bypass
 
 1. Construct aggregate-only synthetic S0 streams at a 40 NM ring, with ANA entry-fix mix, a single runway direction per synthetic two-hour run and an 80/20 RWY 24/06 cross-run mixture. An aircraft's ELDT is ring entry plus entry-fix/runway P10 reference and explicitly unvalidated non-delay jitter.
@@ -17,7 +33,7 @@ The 40 NM ring is **not the actual TMA boundary**; it is used for the original B
 
 S0 uses *no tactical-swaps-to-fit*. The difference between ring-entry order and ELDT landing order arises from entry-fix P10 differences and demand timing. S0's fitted synthetic input includes explicit three-aircraft arrival clusters, and a particularly smooth 20 ARR/h stream; this should **not** be mistaken for an observed sequencing practice. Different plausible synthetic clustering choices may change the gain estimate. The B2a 20+ stratum is a **small sample**.
 
-For an arrival above its unimpeded P10: S0 allocates excess to transition path stretch first, within the B2a P90/published path envelope, then holding; vectored flows have no *published transition* envelope, but the simulator imposes a **declared arbitrary 8 NM physical TMA feasibility cap**, then counts remaining delay as holding. Path distance conversion uses an **unvalidated 150 kt equivalent**. No controller workload, holding-stack volume, or weather is independently calibrated.
+The allocation is **not** inferred from observed holding manoeuvres: B2a only observed total excess and track-length envelopes; the reported holding/time split is a model assumption. For an arrival above its unimpeded P10: S0 allocates excess to transition path stretch first, within the B2a P90/published path envelope, then holding; vectored flows have no *published transition* envelope, but the simulator imposes a **declared arbitrary 8 NM physical TMA feasibility cap**, then counts remaining delay as holding. Path distance conversion uses an **unvalidated 150 kt equivalent**. No controller workload, holding-stack volume, or weather is independently calibrated.
 
 S1 fixes target times at the declared causal freeze instant, with a bounded hypothetical speed-delay budget first, then path stretch, then holding. It reports freeze conflicts rather than retroactively claiming all plans can be executed. Improvements to join lead distance and delivery spread are **UNVALIDATED** hypotheses and affect the **existing B1-P1** opt-in callback. S2 may additionally swap adjacent unfrozen flights when type/wake timing advantages exceed a declared threshold and both aircraft have physically entered the TMA. Maximum displacement is one position; it never assumes unrestricted airborne overtakes. S2 uses the **same locked A1.1 parameters and flight-level random draws**, reassigning the pair-dependent locked targets after a real hypothetical order change; no calibration is refitted.
 
