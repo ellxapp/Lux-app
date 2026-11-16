@@ -19,7 +19,8 @@ test('B2 path stretch stops at per-transition P90 bound and conserves delay',()=
  assert.ok(Math.abs(a.stretchNM-3)<1e-6);
  assert.ok(Math.abs(a.stretchS+a.holdS-300)<1e-8);
  const b=allocateTmaDelay({...f,vectored:true},300);
- assert.equal(b.holdS,0);
+ assert.ok(b.holdS>0);
+ assert.ok(Math.abs(b.stretchNM-ASSUMPTIONS.vectoredPhysicalMaxStretchNM)<1e-6);
 });
 test('B2 S0 uses old scheduler and retains hard demand conservation',()=>{
  const m=makeTmaManifest(20,20261116);
