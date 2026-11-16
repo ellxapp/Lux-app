@@ -43,15 +43,15 @@ export function makeTmaManifest(rate,seed,settings=ASSUMPTIONS){
   const vectored=next()>=B2A.transitionUse.share;
   const ifFix=vectored?null:selected(next,transitionWeights[runway]);
   const ref=p10(fix,runway,settings);
-  const ringMs=Math.max(0,Math.round(600000+i*step+
-    (next()-.5)*2*settings.entryRingJitterS*1000));
+  const ringMs=Math.round(-900000+i*step+
+    (next()-.5)*2*settings.entryRingJitterS*1000);
   const jitterMs=Math.round(next()*settings.nonDelayJitterS*1000);
   const eldtMs=ringMs+ref.seconds*1000+jitterMs;
   return {entryIndex:i,fix,runway,vectored,ifFix,ringMs,eldtMs,
    unimpededS:ref.seconds,unimpededSource:ref.provenance,
    geometry:env(runway,ifFix),joinU:next(),spreadU:next()};
  });
- // Important: type/wake/locked core fields belong to the preassigned A1.2
+ // Align simulation origin after all ring draws; 40NM crossings can precede t=0.\n const minEldt=Math.min(...entries.map(e=>e.eldtMs));\n if(minEldt<0)for(const e of entries){e.ringMs-=minEldt;e.eldtMs-=minEldt;}\n // Important: type/wake/locked core fields belong to the preassigned A1.2
  // rank stream. Entry metadata are attached in ELDT order, BEFORE scheduling.
  entries.sort((a,b)=>a.eldtMs-b.eldtMs||a.entryIndex-b.entryIndex);
  const arrivals=raw.arrivals.map((a,i)=>{
