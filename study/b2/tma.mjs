@@ -15,6 +15,7 @@ export const ASSUMPTIONS=Object.freeze({
   missingFixP10S:720, // UNVALIDATED placeholder for absent 06/fix strata
   pathStretchEquivalentSpeedKt:150, // UNVALIDATED, not actual aircraft speed
   entryRingJitterS:180, // UNVALIDATED; calibrated synthetic bunching
+  entryRingJitterByRateS:{}, // UNVALIDATED stratum-specific sensitivity
   clusterFactorByRate:{6:.1,11:.1,14:.1,19:.15,20:1}, // UNVALIDATED: S0 fit to B2a bins
   tacticalSwapRate:0, // UNVALIDATED only when geometry fails
   b1Policy:'P1',b1Reduction:.75,b1ResidualSpreadNM:.3,b1LeadNM:8,
@@ -47,8 +48,9 @@ export function makeTmaManifest(rate,seed,settings=ASSUMPTIONS){
   const factor=settings.clusterFactorByRate?.[rate]??1;
   assert(factor>0&&factor<=1,'cluster factor bounds');
   const syntheticArrivalStep=(Math.floor(i/3)*3+(i%3)*factor)*step;
+  const jitterS=settings.entryRingJitterByRateS?.[rate]??settings.entryRingJitterS;
   const ringMs=Math.round(-900000+syntheticArrivalStep+
-    (next()-.5)*2*settings.entryRingJitterS*1000);
+    (next()-.5)*2*jitterS*1000);
   const jitterMs=Math.round(next()*settings.nonDelayJitterS*1000);
   const eldtMs=ringMs+ref.seconds*1000+jitterMs;
   return {entryIndex:i,fix,runway,vectored,ifFix,ringMs,eldtMs,
