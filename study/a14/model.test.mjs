@@ -177,3 +177,15 @@ test('L4 holding gate is evaluated at passage time, not at roll or airborne',()=
  assert.equal(x.event,'CAT_II_III_HOLDING_POINT_PASSAGE');
  assert.equal(x.passageMs,1234);
 });
+
+test('L10 paired conditional-minus-baseline differences use identical requests in all six cells',()=>{
+ const r=runReplication();
+ assert.equal(r.pairedComparisons.length,6);
+ for(const x of r.pairedComparisons){
+  assert.equal(x.n,50);
+  assert.equal(x.sameManifestEverySeed,true);
+  assert.equal(x.differences.arrivalRatePerHour.n,50);
+  assert.equal(x.differences.departureRatePerHour.n,50);
+  assert.equal(x.interpretation,'HYPOTHETICAL_CONDITIONAL_MINUS_ACTUAL_POST_VACATE_BASELINE');
+ }
+});
