@@ -15,7 +15,7 @@ export const ASSUMPTIONS=Object.freeze({
   missingFixP10S:720, // UNVALIDATED placeholder for absent 06/fix strata
   pathStretchEquivalentSpeedKt:150, // UNVALIDATED, not actual aircraft speed
   entryRingJitterS:180, // UNVALIDATED; calibrated synthetic bunching
-  clusterFactorByRate:{}, // UNVALIDATED: per-demand groups of three, <=1
+  clusterFactorByRate:{6:.1,11:.1,14:.1,19:.15,20:1}, // UNVALIDATED: S0 fit to B2a bins
   tacticalSwapRate:0, // UNVALIDATED only when geometry fails
   b1Policy:'P1',b1Reduction:.75,b1ResidualSpreadNM:.3,b1LeadNM:8,
   s1TargetBufferS:0,s2MaxPositionDisplacement:1,
@@ -132,7 +132,7 @@ export function runS0(m,{gapPolicy=DISTANCE,settings=ASSUMPTIONS,spacingTool=fal
 }
 export function evaluateS0({seeds=50,settings=ASSUMPTIONS}={}){
  assert(seeds>=50,'S0 calibration must use >=50 seeds');
- const demand=[['<=7',6],['8-11',10],['12-15',14],['16-19',18],['20+',22]];
+ const demand=[['<=7',6],['8-11',11],['12-15',14],['16-19',19],['20+',20]];
  const diagnostics={},all=[];
  for(const [band,rate] of demand){
   const sample=[];
