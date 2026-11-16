@@ -82,8 +82,12 @@ test('B3 L0 reproduces A1.4 unchanged LVP 10NM baseline with post-vacate departu
   assert.equal(x.totals.servedDeparturesByDrain,baseline.totals.servedDepartures);
   assert.equal(x.totals.casaGoArounds,0);
   assert.equal(x.totals.heavyCriticalGoArounds,0);
-  for(const d of x.departures.filter(a=>a.status==='served'&&a.reason!=='FIFO_DRAIN'))
-   assert.equal(d.runwayVacatedBeforeEntry===false,false); // passage constrained by gate
+  for(const d of x.departures.filter(a=>a.status==='served'&&a.reason!=='FIFO_DRAIN')){
+   const preceding=x.arrivals.filter(a=>a.status==='served'&&a.thresholdMs<=d.holdingPointPassageMs)
+    .at(-1);
+   assert.ok(preceding);
+   assert.ok(d.holdingPointPassageMs>=preceding.runwayVacatedMs);
+  }
  }
 });
 test('go-around is an attempt event at follower 2 NM, not a served landing',()=>{
@@ -95,6 +99,8 @@ test('go-around is an attempt event at follower 2 NM, not a served landing',()=>
  // Increase clear time on a single leader through an explicit synthetic draw.
  const x=simulate(m,{policy:'L1',scale:1.25,mix:'HEAVY_ALL_END'});
  assert.equal(x.totals.arrivalRequests,m.arrivals.length);
+ assert.ok(x.totals.casaGoArounds>=1,'constructed long-tail CASA clearance must cause missed approach');
+ assert.ok(x.attempts.some(a=>a.reason==='CASA_OCCUPIED_AT_2NM'));
  assert.equal(x.totals.arrivalRequests,x.totals.servedArrivalsByDrain+x.totals.censoredArrivals);
  assert.equal(x.totals.departureRequests,x.totals.servedDeparturesByDrain+x.totals.censoredDepartures);
  assert.ok(x.attempts.every(a=>a.event==='MISSED_APPROACH'));
@@ -126,4 +132,27 @@ test('50 paired seeds produce L0/L1/L2 under both DEP cases and exact-binomial o
   assert.deepEqual(l0.pairedPolicyMinusL0.arrivalsPerHour.ci95,[0,0]);
   assert.equal(l0.casaGoAroundExact95.method,'CLOPPER_PEARSON_EXACT');
  }
+});
+
+test('explicit heavy occupied critical-area case keeps missed approach separate from CASA risk',()=>{
+ const m=manifest({rate:12,depPerHour:0,seed:20261122});
+ m.arrivals[2].heavyCriticalAreaOccupied=true;
+ m.arrivals[2].criticalHeavyInboundNM=11.9;
+ const x=simulate(m,{policy:'L0'});
+ assert.equal(x.totals.heavyCriticalGoArounds,1);
+ assert.ok(x.attempts.some(a=>a.id===m.arrivals[2].id&&a.reason==='CRITICAL_AREA_HEAVY'));
+ assert.ok(x.arrivals.some(a=>a.id===m.arrivals[2].id&&a.attemptCount>=2));
+ assert.equal(x.totals.arrivalRequests,x.totals.servedArrivalsByDrain+x.totals.censoredArrivals);
+});
+test('binding shares have explicit denominators; exact CASA intervals separate requests and exposed attempts',()=>{
+ const m=manifest({rate:16,depPerHour:2,seed:20261116});
+ const x=simulate(m,{policy:'L1',mix:'EQUAL_SPLIT'});
+ assert.equal(x.metrics.spacingPairsEvaluated,m.arrivals.length-1);
+ assert.ok(x.metrics.departureOpportunitiesEvaluated<=m.departures.length);
+ for(const key of ['departureHoldingGateShare','hardMinimumPlanningBindingShare',
+  'runwayRotPlanningBindingShare','casaTablePlanningBindingShare']){
+  const p=x.metrics[key];
+  assert.ok(p===null||(p>=0&&p<=1),key);
+ }
+ assert.equal(x.totals.arrivalRequests,x.totals.servedArrivalsByDrain+x.totals.censoredArrivals);
 });
