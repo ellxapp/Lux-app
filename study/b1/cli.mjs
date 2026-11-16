@@ -22,6 +22,14 @@ mkdirSync(dirname(out),{recursive:true});writeFileSync(out,canonical(report));
 console.log(canonical({headSha:head,version:VERSION,output:out,rows:sweep.results.length,
  seedsPerCell:CONFIG.replication.seeds,configDigest:digest(CONFIG),
  nonOperational:true,source:sweep.joinInput.id,
+ saturated30h:sweep.results.filter(x=>x.rate===30&&x.gapPolicy==='DISTANCE'&&
+  x.spreadNM===0&&x.r===.75).map(x=>({
+   policy:x.policy,J:x.J,baselineArrivalsPerHour:x.syntheticCapacityComparison.baselineMeanArrivalsPerHour,
+   toolArrivalsPerHour:x.syntheticCapacityComparison.toolMeanArrivalsPerHour,
+   pairedGain:x.syntheticCapacityComparison.pairedToolMinusBaseline,
+   baselineArrivalsServedByDrain:x.baselineServedByDrain.arrivals,
+   toolArrivalsServedByDrain:x.means.servedArrivalsByDrain,
+   pairedDrainGain:x.pairedToolMinusBaseline.servedArrivalsByDrain})),
  zeroRIdentities:sweep.results.filter(x=>x.r===0).every(x=>
   x.pairedToolMinusBaseline.arrivalRatePerHour.mean===0&&
   x.pairedToolMinusBaseline.departureRatePerHour.mean===0)}));
