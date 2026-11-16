@@ -34,7 +34,7 @@ test('estimated geometry and ±25% sensitivity, separate ROT vs CASA Tclear',()=
 });
 test('R1 deterministic L1 bound and R2 analytic L2 from missed-exit mixture',()=>{
  const l1=table({policy:'L1'}),l2=table({policy:'L2',target:.005});
- assert.equal(l1.TP.clearMeanS,91.25);
+ assert.equal(l1.TP.clearMeanS,91.575); // .02 missed-exit tail shifts class mean
  assert.equal(l1.TP.clearanceTargetS,clearanceUpperBound('TP'));
  for(const cls of ['TP','MEDIUM_JET','HEAVY']){
   const q=l2[cls].clearanceTargetS;
