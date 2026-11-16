@@ -258,7 +258,9 @@ export function feasibility(c=DEFAULT_CONFIG,sequence=CONDITIONAL,category='MEDI
   sourceStatus:'SYNTHETIC_UNVALIDATED_VS_OBSERVED_AGGREGATE_DEV',
   notOperationalMinimum:true};
 }
-export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,policy=DISTANCE}={}){
+export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,policy=DISTANCE,spacingTool=null}={}){
+ // B1 opt-in only. Existing A1.2 calls retain identical scheduling decisions.
+ check(spacingTool===null||typeof spacingTool==='function','B1 spacing callback');
  const c=validateConfig(config);validateManifest(manifest,c);
  check(sequences.includes(sequence)&&policies.includes(policy),'invalid scenario');
  const arrivals=[],departures=[],events=[];
@@ -313,7 +315,12 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   const isQueued=!!prev&&f.requestMs<prev.timeMs+coreRequiredMs;
   const selectedTargetM=isQueued?f.coreTargetM:f.effectiveTargetM;
   const selectedComponent=isQueued?'CORE':f.effectiveTargetComponent;
-  const lockedTargetMs=prev?timeToGoMs(selectedTargetM,followerProfile):0;
+  const toolDecision=spacingTool&&prev&&isQueued?spacingTool({leader:prev,follower:f,
+   originalTargetM:selectedTargetM,hardFloorNM:Math.max(c.surveillanceNM,wakeFloorNM(prev.wake,f.wake))}):null;
+  if(toolDecision)check(Number.isSafeInteger(toolDecision.targetM)&&toolDecision.targetM>0&&
+   toolDecision.targetM<=selectedTargetM,'B1 callback cannot increase locked target');
+  const appliedTargetM=toolDecision?.targetM??selectedTargetM;
+  const lockedTargetMs=prev?timeToGoMs(appliedTargetM,followerProfile):0;
   const noDepRequiredMs=Math.max(noDepFloor,lockedTargetMs);
   const noDepTime=prev?Math.max(f.requestMs,prev.timeMs+noDepRequiredMs):f.requestMs;
   let selectedTime=noDepTime;
@@ -361,6 +368,7 @@ export function simulate(manifest,config=DEFAULT_CONFIG,{sequence=CONDITIONAL,po
   const row={...f,status:'served',timeMs:selectedTime,delayMs:selectedTime-f.requestMs,
    arrivalClearMs:selectedTime+c.arrivalROTMs,bindingReasons:[],
    lockedTargetM:selectedTargetM??null,lockedTargetComponent:selectedComponent??null,
+   ...(toolDecision?{b1ToolDecision:toolDecision,b1AppliedTargetM:appliedTargetM}:{}),
    lockedTargetGapMs:lockedTargetMs,fullMixtureTargetM:f.effectiveTargetM??null,
    coreOnlyTargetM:f.coreTargetM??null,queueConditional:isQueued,
    queueThresholdMs:prev?prev.timeMs+coreRequiredMs:null,
