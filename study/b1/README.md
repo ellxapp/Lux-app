@@ -16,7 +16,7 @@ The join is sampled **once per follower in the immutable manifest**. `J=6/8/10 N
 
 ## Scenario and output specification
 
-The sweep is **20/22/24 ARR requests/h × 3 DEP/h including 2 heavy × DISTANCE/TIME × P1/P2 × J 6/8/10 × r 0/.25/.50/.75 × spread 0/.3**, using **50 shared seed manifests** per paired comparison. The original A1.2 two-hour demand, 30-minute warm-up, one-hour measurement window and subsequent drain are preserved. The same aircraft, immutable locked targets, departure requests, join distances and spread quantiles feed baseline and treatment; no independent stochastic draws occur during scheduling.
+The sweep is **20/22/24 ARR requests/h plus saturated 30 ARR requests/h plus saturated 30 ARR requests/h × 3 DEP/h including 2 heavy × DISTANCE/TIME × P1/P2 × J 6/8/10 × r 0/.25/.50/.75 × spread 0/.3**, using **50 shared seed manifests** per paired comparison. The original A1.2 two-hour demand, 30-minute warm-up, one-hour measurement window and subsequent drain are preserved. The same aircraft, immutable locked targets, departure requests, join distances and spread quantiles feed baseline and treatment; no independent stochastic draws occur during scheduling.
 
 Each cell records served ARR/h and DEP/h, measured-window mean and P90 arrival delay, censored requests, tool reachability among all and queued pairs, acted-pair counts, ROT/hard-minimum binding diagnostics, under-target flags and paired treatment-minus-baseline mean differences with **95% bootstrap intervals**. Each cell includes per-seed manifest digests and never makes an approved-capacity claim. The prior **+3–4 ARR/h** estimate is a **sanity upper bound only**, not a fit target. Results can be demand-limited, throughput-neutral or negative; these outcomes are to be reported rather than tuned away.
 
@@ -32,3 +32,11 @@ node study/b1/cli.mjs --out /tmp/b1-spacing-sensitivity.json
 ```
 
 The CLI rejects operational/fit flags and repository output paths, requires a clean tree and embeds the commit and input hashes. Until the CLI and tests have been executed on this branch, **no numerical benefit or PASS status is claimed**.
+
+## Claude PR #6 review additions: R1 and N1
+
+[Review 5922218912](https://github.com/ellxapp/Lux-app/pull/6) accepted the initial B1 mechanics but found the tool's 24 ARR/h results demand-capped, so apparent policy/r convergence did not establish its saturated limit. **R1** adds a separately tagged **30 ARR/h synthetic request** case to the *same* paired matrix, for both P1/P2, J=6/8/10, every r and residual spread and both DISTANCE/TIME departure-gap modes. This is a **synthetic served-measurement-hour throughput under saturated requests**, NOT an approved capacity. Each saturated cell explicitly gives baseline and tool mean ARR/h, paired delta and 95% interval; the earlier +3–4 ARR/h idea is a comparison bound rather than an enforced output.
+
+**N1** adds `servedArrivalsByDrain` and `servedDeparturesByDrain` to paired-difference keys with 95% intervals, plus baseline and treatment means; censored arrivals/departures and original request conservation remain separate. A slightly negative one-hour count can reflect arrivals crossing the *measurement-hour boundary* earlier, not necessarily fewer requests served by drain. Report BOTH quantities without treating these populations as interchangeable.
+
+The 30/h scenarios have **60 synthetic arrival requests over two hours**, **six synthetic departure requests (four heavy)**, a 30-minute warm-up, one-hour measurement window and a separately defined post-demand drain. All other fixed A1.1/A1.2 mechanics, manifest draws, rules and non-operational warnings are unchanged.
