@@ -7,7 +7,7 @@ import {makeManifest as a12Manifest,simulate as a12Simulate,
  DEFAULT_CONFIG as A12,CONDITIONAL,DISTANCE,TIME,minArrivalThresholdGapMs} from '../a12/model.mjs';
 import {wakeFloorNM,profileFor,timeToGoMs,distanceBeforeThresholdNM} from '../a11/model.mjs';
 export const CONFIG=Object.freeze(JSON.parse(readFileSync(new URL('./B1_SENSITIVITY.json',import.meta.url),'utf8')));
-export const VERSION='B1-SPACING-SENSITIVITY-CANDIDATE-1';
+export const VERSION='B1-R1-N1-SATURATED-CANDIDATE-2';
 const H=3600000,NM=1852;
 const requireTrue=(v,m)=>{if(!v)throw Error(m);};
 const random=seed=>{let x=seed>>>0||1;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};};
@@ -15,10 +15,13 @@ const quant=(xs,p)=>{const a=xs.filter(Number.isFinite).sort((x,y)=>x-y);if(!a.l
 const avg=xs=>xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null;
 export function validateB1(c=CONFIG){
  requireTrue(c.schema===1&&c.preset==='B1_HYPOTHETICAL_SPACING_TOOL_NON_OPERATIONAL','B1 sensitivity only');
- requireTrue(JSON.stringify(c.arrivalDemandPerHour)==='[20,22,24]','demand levels');
+ requireTrue(JSON.stringify(c.arrivalDemandPerHour)==='[20,22,24,30]','demand levels');
  requireTrue(JSON.stringify(c.reductionFractions)==='[0,0.25,0.5,0.75]','reduction');
  requireTrue(JSON.stringify(c.toolRequiredLeadDistanceNM)==='[6,8,10]','lead distances');
  requireTrue(c.residualSpreadNM.length===2&&c.residualSpreadNM.every(x=>x>=0),'spread');
+ requireTrue(c.saturatedArrivalDemandPerHour===30&&
+  c.saturationLabel==='HYPOTHETICAL_SERVED_HOURLY_RATE_NOT_CERTIFIED_CAPACITY',
+  'R1 synthetic saturation marker');
  requireTrue(c.replication.seeds>=50&&c.replication.bootstrapReplications>=1000,'replication');
  requireTrue(c.observedJoin.n===1857&&c.observedJoin.id==='OBSERVED_SEP2026_DEV_JOIN','observed join');
  requireTrue(c.observedJoin.inverseCdfKnots[0][0]===0&&
@@ -114,6 +117,8 @@ export function runOne(m,{policy='P1',r=0,spreadNM=0,J=8,gapPolicy=DISTANCE}={})
   a11LockSha256:run.meta.a11Spacing.lockSha256,policy,gapPolicy,r,spreadNM,J,
   hypothetical:true,operational:false},
   metrics:{arrivalRatePerHour:windowArr.length,departureRatePerHour:windowDep.length,
+   // N1: all original requests accounted for by the fixed drain horizon.
+   // These counts are distinct from throughput in the one-hour measurement window.
    arrivalDelayMeanS:avg(delay),arrivalDelayP90S:quant(delay,.9),
    servedArrivalsByDrain:served.length,servedDeparturesByDrain:run.departures.filter(x=>x.status==='served').length,
    demandArrivals:m.arrivals.length,demandDepartures:m.opportunities.length,
@@ -153,12 +158,25 @@ export function runSweep({seeds=CONFIG.replication.seeds,rates=CONFIG.arrivalDem
   for(const policy of ['P1','P2'])for(const J of CONFIG.toolRequiredLeadDistanceNM)
    for(const spreadNM of CONFIG.residualSpreadNM)for(const r of CONFIG.reductionFractions){
     const runs=r===0?baseline:manifests.map(m=>runOne(m,{policy,J,spreadNM,r,gapPolicy}));
-    const keys=['arrivalRatePerHour','departureRatePerHour','arrivalDelayMeanS','arrivalDelayP90S'];
+    const keys=['arrivalRatePerHour','departureRatePerHour','arrivalDelayMeanS','arrivalDelayP90S',
+     'servedArrivalsByDrain','servedDeparturesByDrain'];
     const diffs=Object.fromEntries(keys.map((key,i)=>[key,pairedBootstrap(runs.map((x,j)=>
       x.metrics[key]-baseline[j].metrics[key]),CONFIG.replication.bootstrapSeed+rate*1000+i*100+J*10+Math.round(r*100))]));
     const means=Object.fromEntries(Object.keys(runs[0].metrics).filter(k=>
      typeof runs[0].metrics[k]==='number').map(k=>[k,avg(runs.map(x=>x.metrics[k]))]));
+    const saturated=rate===CONFIG.saturatedArrivalDemandPerHour;
     result.push({rate,gapPolicy,policy,J,spreadNM,r,n:seeds,
+     saturatedArrivalDemand:saturated,
+     ...(saturated?{syntheticCapacityComparison:{
+      source:'HYPOTHETICAL_30_ARR_REQUESTS_PER_H_NOT_OPERATIONAL_CAPACITY',
+      baselineMeanArrivalsPerHour:avg(baseline.map(x=>x.metrics.arrivalRatePerHour)),
+      toolMeanArrivalsPerHour:means.arrivalRatePerHour,
+      pairedToolMinusBaseline:diffs.arrivalRatePerHour,
+      requestRatePerHour:rate,
+      interpretation:'SERVED_MEASUREMENT_HOUR_RATE_UNDER_SATURATED_REQUESTS_NOT_APPROVED_ELLX_CAPACITY'
+     }}:{}),
+     baselineServedByDrain:{arrivals:avg(baseline.map(x=>x.metrics.servedArrivalsByDrain)),
+      departures:avg(baseline.map(x=>x.metrics.servedDeparturesByDrain))},
      baselineManifestHashes:baseline.map(x=>x.meta.manifestHash),
      identicalPairedManifests:runs.every((x,i)=>x.meta.manifestHash===baseline[i].meta.manifestHash),
      means,pairedToolMinusBaseline:diffs,capacityEligible:false});
@@ -169,5 +187,7 @@ export function runSweep({seeds=CONFIG.replication.seeds,rates=CONFIG.arrivalDem
   joinInput:CONFIG.observedJoin,results:result,
   warnings:['NO_OBSERVED_TOOL_EFFECTIVENESS','JOIN_INVERSE_CDF_INTERPOLATED_AGGREGATES',
    'ROT_GROUND_TIMING_UNVALIDATED','P2_UNAPPROVED_HYPOTHETICAL_RULE_CHANGE',
-   'NO_SAFETY_OR_RUNWAY_CAPACITY_CLAIM','THREE_TO_FOUR_ARR_PER_H_SANITY_BOUND_NOT_FIT_TARGET']};
+   'NO_SAFETY_OR_RUNWAY_CAPACITY_CLAIM','THREE_TO_FOUR_ARR_PER_H_SANITY_BOUND_NOT_FIT_TARGET',
+   'R1_30_ARR_H_SATURATED_REQUEST_NOT_OPERATIONAL_CAPACITY',
+   'N1_SERVED_BY_DRAIN_DISTINCT_FROM_ONE_HOUR_WINDOW']};
 }
