@@ -1,22 +1,9 @@
-// B2b S0 fit-search only: no S1/S2 result on this exploratory calibration.
-// Every candidate is a labelled synthetic arrival bunching assumption.
+// High-demand S0 sensitivity: ring jitter only. No S1/S2.
 import {ASSUMPTIONS,makeTmaManifest,runS0} from './tma.mjs';
-import {B2A} from './calibration.mjs';
-const rates=[['<=7',6],['8-11',11],['12-15',14],['16-19',19],['20+',20]];
-const factors=[.05,.1,.15,.2,.25,.4,.55,.7,.85,1];
-const quant=(a,p)=>{const s=a.sort((x,y)=>x-y),i=(s.length-1)*p,k=Math.floor(i);return s[k]+(s[Math.min(k+1,s.length-1)]-s[k])*(i-k);};
-for(const [band,rate] of rates){
- const results=[];
- for(const f of factors){
-  const settings={...ASSUMPTIONS,clusterFactorByRate:{[rate]:f}},v=[];let inv=0,n=0;
-  try{
-   for(let i=0;i<50;i++){
-    const m=makeTmaManifest(rate,20261116+i,settings),s=runS0(m,{settings,gapPolicy:'TIME'});
-    v.push(...s.allocation.map(x=>x.delayS));inv+=s.inversions.inversions;n+=s.inversions.pairs;
-   }
-   const median=quant(v,.5);
-   results.push({factor:f,median,delta:median-B2A.excess40[band].median,inv:inv/n});
-  }catch(e){results.push({factor:f,error:String(e)});}
- }
- console.log(JSON.stringify({band,rate,observed:B2A.excess40[band].median,results}));
+const quant=(v,p)=>{const a=v.sort((x,y)=>x-y),k=(a.length-1)*p,i=Math.floor(k);return a[i]+(a[Math.min(i+1,a.length-1)]-a[i])*(k-i);};
+for(const j of [0,15,30,60,90,120,180,240])for(const gapPolicy of ['DISTANCE','TIME']){
+ const settings={...ASSUMPTIONS,entryRingJitterByRateS:{20:j}},xs=[],inv=[];
+ for(let k=0;k<50;k++){const m=makeTmaManifest(20,20261116+k,settings),r=runS0(m,{settings,gapPolicy});
+  xs.push(...r.allocation.map(x=>x.delayS));inv.push(r.inversions.rate);}
+ console.log(JSON.stringify({rate:20,jitterS:j,gapPolicy,median:quant(xs,.5),inversionMean:inv.reduce((a,b)=>a+b,0)/inv.length}));
 }
