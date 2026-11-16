@@ -15,6 +15,7 @@ export const ASSUMPTIONS=Object.freeze({
   missingFixP10S:720, // UNVALIDATED placeholder for absent 06/fix strata
   missingTmaFixP10S:350, // UNVALIDATED placeholder for absent boundary/fix strata
   pathStretchEquivalentSpeedKt:150, // UNVALIDATED, not actual aircraft speed
+  vectoredPhysicalMaxStretchNM:8, // UNVALIDATED TMA feasibility bound; NOT a published transition envelope
   entryRingJitterS:180, // UNVALIDATED; calibrated synthetic bunching
   entryRingJitterByRateS:{20:0}, // UNVALIDATED fitted high-demand input regularity
   entryRingStepMultiplierByRate:{20:1.01}, // UNVALIDATED high-demand +1% smoothing
@@ -96,12 +97,13 @@ export function allocateTmaDelay(f,delayS,settings=ASSUMPTIONS,{speedFirstS=0}={
  assert(delayS>=-1e-6,'negative TMA delay');
  const speedS=Math.min(Math.max(0,speedFirstS),Math.max(0,delayS));
  const remaining=Math.max(0,delayS-speedS);
- const availableNM=f.vectored?null:Math.max(0,(f.ratioP90??1)-1)*(f.publishedTransitionNM??0);
- const maxStretchS=f.vectored?Infinity:availableNM/settings.pathStretchEquivalentSpeedKt*3600;
+ const availableNM=f.vectored?settings.vectoredPhysicalMaxStretchNM:
+  Math.max(0,(f.ratioP90??1)-1)*(f.publishedTransitionNM??0);
+ const maxStretchS=availableNM/settings.pathStretchEquivalentSpeedKt*3600;
  const stretchS=Math.min(remaining,maxStretchS),holdS=Math.max(0,remaining-stretchS);
  return {speedS,stretchS,holdS,stretchNM:stretchS*settings.pathStretchEquivalentSpeedKt/3600,
   maxStretchNM:availableNM,stretchEnvelopeSource:f.vectored?
-   'VECTORED_NO_PUBLISHED_TRANSITION_CAP_UNVALIDATED':
+   'VECTORED_NO_PUBLISHED_TRANSITION_ENVELOPE_EIGHT_NM_UNVALIDATED_PHYSICAL_BOUND':
    f.ratioP90?'OBSERVED_B2A_TRANSITION_RATIO_P90_UNVALIDATED_SPEED':'NO_TRANSITION_ENVELOPE',
   residualCounted:true};
 }
