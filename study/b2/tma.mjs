@@ -17,7 +17,8 @@ export const ASSUMPTIONS=Object.freeze({
   pathStretchEquivalentSpeedKt:150, // UNVALIDATED, not actual aircraft speed
   entryRingJitterS:180, // UNVALIDATED; calibrated synthetic bunching
   entryRingJitterByRateS:{20:0}, // UNVALIDATED fitted high-demand input regularity
-  clusterFactorByRate:{6:.1,11:.1,14:.1,19:.15,20:1}, // UNVALIDATED: S0 fit to B2a bins
+  entryRingStepMultiplierByRate:{20:1.01}, // UNVALIDATED high-demand +1% smoothing
+  clusterFactorByRate:{6:.15,11:.1,14:.1,19:.15,20:1}, // UNVALIDATED: S0 fit to B2a bins
   tacticalSwapRate:0, // UNVALIDATED only when geometry fails
   b1Policy:'P1',b1Reduction:.75,b1ResidualSpreadNM:.3,b1LeadNM:8,
   s1TargetBufferS:0,s2MaxPositionDisplacement:1,
@@ -40,7 +41,7 @@ export function makeTmaManifest(rate,seed,settings=ASSUMPTIONS){
  assert(Number.isInteger(rate)&&rate>=2&&rate<=30,'synthetic demand rate');
  assert(settings.tacticalSwapRate>=0&&settings.tacticalSwapRate<=.2,'swap fraction');
  const c=b2Config(rate,seed),raw=makeA12(c,'OBSERVED_LIKE_3_PER_H_2_HEAVY');
- const next=rng((seed^0xB2A2026)>>>0),step=H/rate;
+ const next=rng((seed^0xB2A2026)>>>0),step=H/rate*(settings.entryRingStepMultiplierByRate?.[rate]??1);
  // Single runway direction per synthetic two-hour session; 80/20 is cross-session mix.
  const scenarioRunway=((seed-20261116)%5+5)%5===0?'06':'24'; // 20% RWY06, stratified paired seeds
  const entries=Array.from({length:rate*2},(_,i)=>{
