@@ -1,7 +1,7 @@
 // A1.4: deterministic synthetic LVP event model, NOT operative ATC guidance.
 import {readFileSync} from 'node:fs';
 import {digest} from '../core.mjs';
-export const VERSION='A1.4-LVP-post-vacate-candidate-1';
+export const VERSION='A1.4-D1-floor-bound-saturation-candidate-2';
 export const CONFIG=Object.freeze(JSON.parse(readFileSync(new URL('./MECHANICS_ONLY.json',import.meta.url),'utf8')));
 export const BASELINE='SEQUENTIAL_AFTER_RUNWAY_VACATED';
 export const SENSITIVITY='HYPOTHETICAL_NOT_ELLX_LVP_PRACTICE';
@@ -21,6 +21,11 @@ export function validate(c=CONFIG){
  must(c.synthetic.allGroundTimingStatus==='SYNTHETIC_UNVALIDATED','ROT provenance');
  must(c.scenario.seedCount>=50&&c.scenario.drainEndMs>c.scenario.mixedDemandHours*H,'replication and drain');
  must(c.observedWinter?.lvpWithDeparture?.intervalS?.[0]===266,'frozen winter P10');
+ must(c.observedWinter.lvpWithDeparture.belowBaselineMediumMinimum.belowCount===13&&
+  c.observedWinter.lvpWithDeparture.belowBaselineMediumMinimum.totalPairs===29&&
+  c.observedWinter.lvpWithDeparture.belowBaselineHeavyMinimum.roundedPercent===76,
+  'observed D1 aggregate must be preserved, not estimated from model');
+ must(c.scenario.saturatedArrivalDemandPerHour>=16,'D1 saturation demand');
  must(c.outputs.holdoutValidation===false,'no winter holdout');
  return c;
 }
@@ -95,17 +100,19 @@ export function feasibleMixedGap(c=CONFIG,{category='MEDIUM',rotMs=c.synthetic.a
   baselineActualPractice:entryPolicy===BASELINE,
   sourceStatus:'SYNTHETIC_GROUND_TIMINGS_NOT_ANA_LVP_MEASUREMENTS'};
 }
-export function makeManifest(c=CONFIG,{seed=c.scenario.seedStart,arrivalOnly=false}={}){
- validate(c);const rand=rng(seed),s=c.scenario;
- const nA=s.demandArrivalPerHour*(arrivalOnly?s.arrivalOnlyDemandHours:s.mixedDemandHours);
+export function makeManifest(c=CONFIG,{seed=c.scenario.seedStart,arrivalOnly=false,
+ arrivalDemandPerHour=c.scenario.demandArrivalPerHour}={}){
+ validate(c);must(Number.isInteger(arrivalDemandPerHour)&&arrivalDemandPerHour>=1,'arrival demand');
+ const rand=rng(seed),s=c.scenario;
+ const nA=arrivalDemandPerHour*(arrivalOnly?s.arrivalOnlyDemandHours:s.mixedDemandHours);
  const nD=arrivalOnly?0:s.demandDeparturePerHour*s.mixedDemandHours;
  const arr=Array.from({length:nA},(_,i)=>({id:'ARR-'+i,kind:'ARR',requestMs:Math.round(
-  (i+.5)*H/s.demandArrivalPerHour+(rand()-.5)*2*s.arrivalRequestJitterMs),
+  (i+.5)*H/arrivalDemandPerHour+(rand()-.5)*2*s.arrivalRequestJitterMs),
   catIOnlyRequested:false,source:'SYNTHETIC_REQUEST_NOT_OBSERVED'}));
  const deps=Array.from({length:nD},(_,i)=>({id:'DEP-'+i,kind:'DEP',
   requestMs:Math.round((i+.5)*H/s.demandDeparturePerHour+(rand()-.5)*2*s.departureRequestJitterMs),
   category:i%3===0?'HEAVY':'MEDIUM',source:'SYNTHETIC_READY_TIME_NOT_OBSERVED'}));
- return {schema:14,seed,arrivalOnly,arrivals:arr,departures:deps,
+ return {schema:14,seed,arrivalOnly,arrivalDemandPerHour,arrivals:arr,departures:deps,
   source:'SYNTHETIC_IMMUTABLE_MANIFEST',catISelection:'NO_RANDOM_CAT_I_ONLY_REQUEST'};
 }
 export function simulate(m,c=CONFIG,{phase='NOTIFICATION',entryPolicy=BASELINE}={}){
@@ -119,6 +126,9 @@ export function simulate(m,c=CONFIG,{phase='NOTIFICATION',entryPolicy=BASELINE}=
   const thresholdFloor=prev?prev.thresholdMs+Math.max(c.synthetic.arrivalROTMs,
    secondsFromNM(protectedLvp?c.runways['24'].inboundPlanningNM:c.synthetic.hardSeparationNM,c)*1000):item.requestMs;
   let threshold=Math.max(item.requestMs,thresholdFloor);
+  const planningFloorMs=prev&&protectedLvp?
+   prev.thresholdMs+secondsFromNM(c.runways['24'].inboundPlanningNM,c)*1000:null;
+  const requestedGapMs=prev?item.requestMs-prev.thresholdMs:null;
   const critical=heavyCriticalDecision({arrival:item,runway:'24',phase,
    inboundNM:item.criticalHeavyInboundNM??20,
    heavyCriticalAreaOccupied:item.heavyCriticalAreaOccupied===true,
@@ -182,10 +192,16 @@ export function simulate(m,c=CONFIG,{phase='NOTIFICATION',entryPolicy=BASELINE}=
    attemptId:critical.nextAttemptId??item.id+':attempt-1',
    attemptCount:critical.outcome==='MISSED_APPROACH'?2:1,
    missedApproach:critical.outcome==='MISSED_APPROACH',casa,phase,
+   requestedGapMs,planningFloorMs,
+   floorBound:false,floorBoundSource:'ARR_PLANNING_10NM_FLOOR_NOT_AN_OBSERVED_ADSB_CAPTURE',
+   sourceGapPopulation:'ALL_SYNTHETIC_THRESHOLD_PAIRS',
+
    source:'SYNTHETIC_EVENT_TIMES_UNVALIDATED'};
   if(prev){
    row.deliveredSpacingNM=(threshold-prev.thresholdMs)/1000*
     c.synthetic.finalApproachSpeedKt/3600;
+   row.floorBound=protectedLvp&&item.requestMs<=planningFloorMs&&
+    Math.abs((threshold-prev.thresholdMs)-secondsFromNM(planningGapNM,c)*1000)<1;
    row.planningShortfall=row.deliveredSpacingNM<planningGapNM;
    if(row.planningShortfall)shortfalls++;
   }
@@ -214,6 +230,11 @@ export function simulate(m,c=CONFIG,{phase='NOTIFICATION',entryPolicy=BASELINE}=
  const served=departures.filter(x=>x.status==='served');
  const inHour=(x)=>x>=c.scenario.measurementStartMs&&x<c.scenario.measurementEndMs;
  const gap=arrivals.slice(1).map((x,i)=>(x.thresholdMs-arrivals[i].thresholdMs)/1000);
+ const floorBoundPairs=arrivals.slice(1).filter(x=>x.floorBound);
+ const floorBoundGaps=floorBoundPairs.map(x=>x.deliveredSpacingNM);
+ const floorBoundIntervals=floorBoundPairs.map(x=>
+  (x.thresholdMs-arrivals[arrivals.indexOf(x)-1].thresholdMs)/1000);
+ const allArrivalPairs=Math.max(0,arrivals.length-1);
  return {meta:{phase,entryPolicy,lvpStateSource:'METAR_PROXY',operationalLvpVerified:false,
    manifestSha256:digest(m),source:'SYNTHETIC_UNVALIDATED',version:VERSION},
   totals:{arrivalRequests:m.arrivals.length,departureRequests:m.departures.length,
@@ -222,6 +243,11 @@ export function simulate(m,c=CONFIG,{phase='NOTIFICATION',entryPolicy=BASELINE}=
   metrics:{arrivalRatePerHour:arrivals.filter(x=>inHour(x.thresholdMs)).length,
    departureRatePerHour:served.filter(x=>inHour(x.airborneMs)).length,
    arrivalIntervalsSeconds:desc(gap),arrivalSpacingNM:desc(arrivals.slice(1).map(x=>x.deliveredSpacingNM)),
+   floorBoundArrivalPairs:{count:floorBoundPairs.length,totalPairs:allArrivalPairs,
+    share:allArrivalPairs?floorBoundPairs.length/allArrivalPairs:null,
+    distanceNM:desc(floorBoundGaps),intervalSeconds:desc(floorBoundIntervals),
+    eligibleDefinition:'ARR_REQ_AT_OR_BEFORE_PREV_THRESHOLD_PLUS_10NM_AND_FINAL_DELIVERY_EQUAL_10NM_FLOOR',
+    observedCaptureProxy:false},
    planningShortfalls:shortfalls,departureHolds:holds.length,
    arrivalDelaySeconds:desc(arrivals.map(x=>x.delayMs/1000)),
    departureDelaySeconds:desc(served.map(x=>x.delayMs/1000)),
@@ -283,11 +309,39 @@ export function runReplication(c=CONFIG){
    heavy:feasibleMixedGap(c,{category:'HEAVY',entryPolicy:SENSITIVITY}),
    practice:'HYPOTHETICAL_NOT_ELLX_LVP_PRACTICE'},
   arrivalOnlyFogIntervalReferenceS:304,arrivalOnly10NmPlanningNM:10,
-  cases,pairedComparisons,warnings:['METAR_PROXY not an LVP declaration',
+  cases,pairedComparisons,saturatedArrivalOnly:(()=>{
+   const arrivalDemandPerHour=c.scenario.saturatedArrivalDemandPerHour,rows=[];
+   for(let i=0;i<c.scenario.seedCount;i++){
+    const seed=c.scenario.seedStart+i;
+    const m=makeManifest(c,{seed,arrivalOnly:true,arrivalDemandPerHour});
+    const x=simulate(m,c,{phase:'NOTIFICATION',entryPolicy:BASELINE});
+    rows.push({seed,manifestHash:digest(m),
+     arrivalsPerHour:x.metrics.arrivalRatePerHour,
+     floorBound:x.metrics.floorBoundArrivalPairs,
+     interval:x.metrics.arrivalIntervalsSeconds,
+     deliveredSpacing:x.metrics.arrivalSpacingNM,
+     arrivalDemandConserved:x.totals.arrivalRequests===x.totals.servedArrivals});
+   }
+   return {requestedArrivalsPerHour:arrivalDemandPerHour,seedCount:rows.length,
+    finalApproachSpeedKt:c.synthetic.finalApproachSpeedKt,
+    10NmFloorSeconds:secondsFromNM(10,c),
+    referenceCapan2025ArrivalsPerHour:c.scenario.saturatedCompareToCapan2025ArrivalsPerHour,
+    referenceSourceStatus:c.scenario.saturatedReferenceStatus,
+    arrivalsPerHour:desc(rows.map(x=>x.arrivalsPerHour)),
+    allPairIntervalMedianSeconds:desc(rows.map(x=>x.interval.median)),
+    allPairSpacingMedianNM:desc(rows.map(x=>x.deliveredSpacing.median)),
+    floorBoundPairCount:desc(rows.map(x=>x.floorBound.count)),
+    floorBoundPairShare:desc(rows.map(x=>x.floorBound.share)),
+    floorBoundPairSpacingMedianNM:desc(rows.map(x=>x.floorBound.distanceNM.median).filter(Number.isFinite)),
+    floorBoundPairIntervalMedianS:desc(rows.map(x=>x.floorBound.intervalSeconds.median).filter(Number.isFinite)),
+    allDemandConserved:rows.every(x=>x.arrivalDemandConserved),
+    perSeed:rows,sourceStatus:'SYNTHETIC_SATURATED_DEMAND_UNVALIDATED_SPEED_ROT_NOT_OPERATIONAL_CAPACITY'};
+  })(),warnings:['METAR_PROXY not an LVP declaration',
    '10NM is planning SHOULD, not minimum separation',
    'Baseline departures enter only AFTER runway vacated',
    '266s observed mixed P10 is a feasibility conflict, NOT permission for conditional line-up',
    'Conditional line-up is hypothetical and not ELLX LVP practice',
-   'No observed distribution of how many of 29 proxy pairs fall below model minimum',
+   'Observed METAR-proxy 13/29 (45%) mixed gaps below 315s, 76% below 427.5s are descriptive only; medium/heavy departure types not separable',
+   'Observed ADS-B captured distance population differs from uncensored all-synthetic threshold pair population',
    'RWY06 parameters only','CASA/ROT/taxi timings unvalidated','No winter holdout or actual LVP capacity claim']};
 }
