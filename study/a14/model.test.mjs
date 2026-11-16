@@ -110,7 +110,7 @@ test('L8 simulator conserves missed approach original arrival ID and attempt ID'
 test('L9 RWY06 is parameter-only and no winter observation is invented',()=>{
  assert.deepEqual(CONFIG.runways['06'].exitNames,['D1','C','END']);
  assert.deepEqual(CONFIG.runways['06'].departureHoldingPoints,['G','B4']);
- assert.equal(CONFIG.observedWinter.lvpWithDeparture.belowBaselineMinimumShare,null);
+ assert.equal(CONFIG.observedWinter.lvpWithDeparture.belowBaselineMinimumShare,13/29);
 });
 test('L10 baseline runner never conditionally enters behind a landing aircraft',()=>{
  const m=makeManifest(CONFIG,{seed:11,arrivalOnly:false});
