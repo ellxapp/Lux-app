@@ -44,8 +44,11 @@ const report={schema:14,status:'MECHANICS_ONLY_UNVALIDATED_WITH_WINTER_DESCRIPTI
  observedShareBelowBaselineMin:{
   value:c.observedWinter.lvpWithDeparture.belowBaselineMinimumShare,
   status:c.observedWinter.lvpWithDeparture.shareStatus,
-  note:'Not inferable from only P10/median/P90; Claude to provide if available'},
+  medium:c.observedWinter.lvpWithDeparture.belowBaselineMediumMinimum,
+  heavy:c.observedWinter.lvpWithDeparture.belowBaselineHeavyMinimum,
+  interpretation:'CLAUDE_OBSERVED_AGGREGATE_FROM_29_METAR_PROXY_MIXED_PAIRS_NOT_ACTUAL_LVP_COMPLIANCE'},
  winterFeasibility:r.baselineMixedFeasibility,
+ saturatedArrivalOnly:r.saturatedArrivalOnly,
  conditionalEntrySensitivity:r.conditionalSensitivity,
  scenarios:r.cases,
  pairedComparisons:r.pairedComparisons,
@@ -61,7 +64,10 @@ const slim=r.cases.map(x=>({phase:x.phase,arrivalOnly:x.arrivalOnly,
  planningShortfalls:x.metrics.planningShortfalls,
  holds:x.metrics.departureHolds,
  intervalMedianS:x.arrivalIntervalMedianS,
- spacingMedianNM:x.deliveredSpacingMedianNM}));
+ spacingMedianNM:x.deliveredSpacingMedianNM,
+ floorBoundCount:x.floorBoundCount,
+ floorBoundMedianNM:x.floorBoundMedianNM,
+ floorBoundIntervalMedianS:x.floorBoundIntervalMedianS}));
 const baselineSensitivity=Object.values(['MEDIUM','HEAVY']).map(category=>({
  category,baseline:feasibleMixedGap(c,{category}),conditionalHypothetical:
  feasibleMixedGap(c,{category,entryPolicy:SENSITIVITY}),
@@ -70,5 +76,6 @@ const baselineSensitivity=Object.values(['MEDIUM','HEAVY']).map(category=>({
 console.log(canonical({headSha:head,candidateSha256:digest(payload),configSha256:digest(c),
  version:VERSION,status:report.status,seedCount:c.scenario.seedCount,scenarioCount:r.cases.length,
  feasibility:r.baselineMixedFeasibility,observedBelowMinShare:report.observedShareBelowBaselineMin,
- baselineSensitivity,pairedComparisons:r.pairedComparisons,
+ baselineSensitivity,saturatedArrivalOnly:{...r.saturatedArrivalOnly,perSeed:r.saturatedArrivalOnly.perSeed},
+ pairedComparisons:r.pairedComparisons,
  explicitEventFixtures,summary:slim,outputPath:out}));
