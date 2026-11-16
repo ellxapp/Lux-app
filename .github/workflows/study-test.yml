@@ -1,4 +1,4 @@
-name: Study Stage A tests
+name: Study Stages A and B1 tests
 on:
   pull_request:
     paths:
@@ -24,6 +24,7 @@ jobs:
         run: node study/a13/fit-ready-cli.mjs
       - run: node --test study/a13/*.test.mjs
       - run: node --test study/a14/*.test.mjs
+      - run: node --test study/b1/*.test.mjs
       - name: Verify old app files are untouched
         run: git diff --exit-code ef8737e1deed33327788d1319da1c232bd7cb027 HEAD -- index.html relay-worker.js README.md .nojekyll
       - name: A1.1 dev-only candidate (never committed)
@@ -71,6 +72,15 @@ jobs:
         with:
           name: a14-lvp-mechanics-candidate
           path: /tmp/a14-lvp-candidate.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: B1 non-operational paired spacing sensitivity
+        run: node study/b1/cli.mjs --out /tmp/b1-spacing-sensitivity.json
+      - name: Export B1 review-only sensitivity artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: b1-spacing-hypothetical-not-operational
+          path: /tmp/b1-spacing-sensitivity.json
           retention-days: 14
           if-no-files-found: error
       - name: Synthetic outputs
