@@ -48,6 +48,7 @@ const report={schema:14,status:'MECHANICS_ONLY_UNVALIDATED_WITH_WINTER_DESCRIPTI
  winterFeasibility:r.baselineMixedFeasibility,
  conditionalEntrySensitivity:r.conditionalSensitivity,
  scenarios:r.cases,
+ pairedComparisons:r.pairedComparisons,
  explicitEventFixtures,
  references:r.observedWinter,
  warnings:r.warnings};
@@ -69,4 +70,5 @@ const baselineSensitivity=Object.values(['MEDIUM','HEAVY']).map(category=>({
 console.log(canonical({headSha:head,candidateSha256:digest(payload),configSha256:digest(c),
  version:VERSION,status:report.status,seedCount:c.scenario.seedCount,scenarioCount:r.cases.length,
  feasibility:r.baselineMixedFeasibility,observedBelowMinShare:report.observedShareBelowBaselineMin,
- baselineSensitivity,explicitEventFixtures,summary:slim,outputPath:out}));
+ baselineSensitivity,pairedComparisons:r.pairedComparisons,
+ explicitEventFixtures,summary:slim,outputPath:out}));
