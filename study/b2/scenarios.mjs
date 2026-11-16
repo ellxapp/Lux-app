@@ -212,10 +212,10 @@ export function runB2Sweep({seeds=50,rates=[20,22,24,30],
    const denominatorPositive=standAloneB1.interval95[0]>0;
    const contingentShare=withB1&&policy==='S1'&&denominatorPositive?
     ((mean.arrivalRate-runs.get(policy+'_'+h+'_false').map(r=>r.metrics.arrivalRate)
-      .reduce((a,b)=>a+b,0)/seeds)/standAloneB1.mean):null;
+      .reduce((a,b)=>a+b,0)/seeds-standAloneB1.mean)/standAloneB1.mean):null;
    results.push({rate,gapPolicy,policy,horizon,withB1,n:seeds,
     pairedManifestHashes:manifests.map(digest),mean,pairedMinusS0:paired,
-    interactionB1:interaction,contingentShareOfB1:contingentShare,
+    interactionB1:interaction,incrementalInteractionOverStandaloneB1:contingentShare,
     contingentShareDenominator:denominatorPositive?standAloneB1:'N/A_ZERO_OR_UNCERTAIN_B1',
     source:'HYPOTHETICAL_TMA_ONLY_NOT_OPERATIONAL_CAPACITY'});
   }
@@ -227,5 +227,6 @@ export function runB2Sweep({seeds=50,rates=[20,22,24,30],
   warnings:['IN_SAMPLE_CALIBRATION_NOT_INDEPENDENT_VALIDATION',
    'S1_JOIN_LEAD_SPEED_AND_PRECISION_UNVALIDATED','S2_OVERTAKE_FEASIBILITY_UNVALIDATED',
    'RUNWAY_DIRECTION_SINGLE_PER_SYNTHETIC_SESSION','P1_ONLY_NO_P2_TBS',
-   'NO_ACTUAL_ELLX_CAPACITY_OR_AMAN_PERFORMANCE_CLAIM']};
+   'NO_ACTUAL_ELLX_CAPACITY_OR_AMAN_PERFORMANCE_CLAIM',
+   'INTERACTION_RATIO_RELATIVE_TO_STANDALONE_B1_NOT_FRACTION_OF_TOTAL_GAIN']};
 }
