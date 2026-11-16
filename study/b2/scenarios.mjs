@@ -121,6 +121,16 @@ function report(run,original,metadata,assumptions){
  });
  const intervalErrors=served.map(a=>Math.abs(a.timeMs-
   (a.plannedTargetMs??a.eldtMs))/S);
+ const byFlow={};
+ for(const a of served){
+  const key=a.entryFlowLabel??a.entryFix;
+  const b=byFlow[key]??(byFlow[key]={n:0,availableHorizonTotalS:0,
+   tmaExcessTotalS:0,freezeConflicts:0,tmaP10TotalS:0});
+  b.n++;b.availableHorizonTotalS+=(a.horizonAvailableS??0);
+  b.tmaExcessTotalS+=Math.max(0,(a.timeMs-a.eldtMs)/S);
+  b.tmaP10TotalS+=(a.tmaP10S??0);
+  if(a.freezeVisibilityConflict)b.freezeConflicts++;
+ }
  let hardViolations=0;
  for(let i=1;i<served.length;i++)if(served[i].timeMs+1<
   served[i-1].timeMs+minArrivalThresholdGapMs(served[i-1],served[i],c))hardViolations++;
@@ -150,7 +160,7 @@ function report(run,original,metadata,assumptions){
    hardMinimumViolations:hardViolations,
    requestsTotal:original.arrivals.length+original.opportunities.length,
    processedTotal:run.arrivals.length+run.departures.length},
-  manifestDigest:digest(original),runway:original.arrivals[0].runway};
+  manifestDigest:digest(original),runway:original.arrivals[0].runway,byFlow};
 }
 export function runB2(m,{policy='S0',horizon=null,withB1=false,
  gapPolicy=DISTANCE,gate,settings=ASSUMPTIONS,
@@ -201,6 +211,19 @@ export function runB2Sweep({seeds=50,rates=[20,22,24,30],
    const paired=Object.fromEntries(keys.map((k,mi)=>[k,pairedBootstrap(
     rows.map((r,i)=>r.metrics[k]-baseline[i].metrics[k]).filter(Number.isFinite),
     20261117+rate*100+mi+(horizon?HORIZONS.indexOf(horizon)*1000:0),1000)]));
+   const flows={};
+   for(const row of rows)for(const [name,val] of Object.entries(row.byFlow)){
+    const f=flows[name]??(flows[name]={n:0,horizonS:0,tmaExcessS:0,freezeConflicts:0,tmaP10S:0});
+    f.n+=val.n;f.horizonS+=val.availableHorizonTotalS;
+    f.tmaExcessS+=val.tmaExcessTotalS;f.freezeConflicts+=val.freezeConflicts;
+    f.tmaP10S+=val.tmaP10TotalS;
+   }
+   for(const f of Object.values(flows)){
+    f.horizonMeanS=f.n?f.horizonS/f.n:null;
+    f.tmaExcessMeanS=f.n?f.tmaExcessS/f.n:null;
+    f.tmaP10MeanS=f.n?f.tmaP10S/f.n:null;
+    delete f.horizonS;delete f.tmaExcessS;delete f.tmaP10S;
+   }
    const interaction=withB1&&policy!=='S0'?pairedBootstrap(
     rows.map((r,i)=>{
      const noTool=runs.get(policy+'_'+h+'_false')[i];
@@ -214,7 +237,7 @@ export function runB2Sweep({seeds=50,rates=[20,22,24,30],
     ((mean.arrivalRate-runs.get(policy+'_'+h+'_false').map(r=>r.metrics.arrivalRate)
       .reduce((a,b)=>a+b,0)/seeds-standAloneB1.mean)/standAloneB1.mean):null;
    results.push({rate,gapPolicy,policy,horizon,withB1,n:seeds,
-    pairedManifestHashes:manifests.map(digest),mean,pairedMinusS0:paired,
+    pairedManifestHashes:manifests.map(digest),mean,byFlow:flows,pairedMinusS0:paired,
     interactionB1:interaction,incrementalInteractionOverStandaloneB1:contingentShare,
     contingentShareDenominator:denominatorPositive?standAloneB1:'N/A_ZERO_OR_UNCERTAIN_B1',
     source:'HYPOTHETICAL_TMA_ONLY_NOT_OPERATIONAL_CAPACITY'});
