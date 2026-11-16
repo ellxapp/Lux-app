@@ -119,6 +119,17 @@ export function simulate(m,c=CONFIG,{phase='NOTIFICATION',entryPolicy=BASELINE}=
   const thresholdFloor=prev?prev.thresholdMs+Math.max(c.synthetic.arrivalROTMs,
    secondsFromNM(protectedLvp?c.runways['24'].inboundPlanningNM:c.synthetic.hardSeparationNM,c)*1000):item.requestMs;
   let threshold=Math.max(item.requestMs,thresholdFloor);
+  const critical=heavyCriticalDecision({arrival:item,runway:'24',phase,
+   inboundNM:item.criticalHeavyInboundNM??20,
+   heavyCriticalAreaOccupied:item.heavyCriticalAreaOccupied===true,
+   attemptNumber:1,thresholdMs:threshold},c);
+  if(critical.outcome==='MISSED_APPROACH'){
+   missedApproaches++;
+   events.push({id:item.id,event:'MISSED_APPROACH',reason:'CRITICAL_AREA_HEAVY',
+    originalFlightId:item.id,attemptId:critical.attemptId,timeMs:threshold,
+    reentryAtMs:critical.reentryAtMs,source:'SYNTHETIC_UNVALIDATED'});
+   threshold=Math.max(threshold,critical.reentryAtMs);
+  }
   // The 10NM should targets planning, not the hard 3NM floor.
   // Only NOTIFICATION activates the source-tagged LVP constraints.
   const d=ready.find(x=>!servedDep.has(x.id)&&x.requestMs<=threshold);
@@ -168,7 +179,9 @@ export function simulate(m,c=CONFIG,{phase='NOTIFICATION',entryPolicy=BASELINE}=
    landingRunEndMs:threshold+c.synthetic.landingRunEndAfterThresholdMs,
    casaClearMs:threshold+c.synthetic.landingRunEndAfterThresholdMs+
     c.synthetic.casaClearAfterLandingRunMs,
-   attemptId:item.id+':attempt-1',casa,phase,
+   attemptId:critical.nextAttemptId??item.id+':attempt-1',
+   attemptCount:critical.outcome==='MISSED_APPROACH'?2:1,
+   missedApproach:critical.outcome==='MISSED_APPROACH',casa,phase,
    source:'SYNTHETIC_EVENT_TIMES_UNVALIDATED'};
   if(prev){
    row.deliveredSpacingNM=(threshold-prev.thresholdMs)/1000*
