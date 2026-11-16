@@ -133,7 +133,7 @@ export function evaluateS0({seeds=50,settings=ASSUMPTIONS}={}){
    const m=makeTmaManifest(rate,20261116+i,settings);
    const s=runS0(m,{settings});
    sample.push(...s.allocation.map(a=>a.delayS));
-   all.push(...s.output.arrivals.map(a=>({id:band+'-'+i+'-'+a.id,
+   all.push(...s.output.arrivals.map(a=>({group:band+':'+i,id:a.id,
     ringMs:a.ringMs,timeMs:a.timeMs,status:a.status})));
   }
   diagnostics[band]={median:quant(sample,.5),p90:quant(sample,.9),
@@ -144,7 +144,7 @@ export function evaluateS0({seeds=50,settings=ASSUMPTIONS}={}){
  const pairMap=new Map();
  let reversals=0,pairs=0;
  for(const f of ordered){
-  const parts=f.id.split('-'),key=parts[0]+'-'+parts[1],prev=pairMap.get(key);
+  const key=f.group,prev=pairMap.get(key);
   if(prev){pairs++;if(f.ringMs<prev.ringMs)reversals++;}
   pairMap.set(key,f);
  }
