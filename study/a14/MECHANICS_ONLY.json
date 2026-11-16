@@ -23,7 +23,8 @@
       6867938828,
       6912637395,
       6912766866,
-      6912811713
+      6912811713,
+      "pullrequestreview-5920292883"
     ]
   },
   "weatherThresholds": {
@@ -158,8 +159,32 @@
         320,
         503
       ],
-      "belowBaselineMinimumShare": null,
-      "shareStatus": "NOT_REPORTED_BY_CLAUDE_DO_NOT_INFER_FROM_QUANTILES"
+      "belowBaselineMinimumShare": 0.4482758620689655,
+      "shareStatus": "OBSERVED_WINTER_AGGREGATE_CLAUDE_REVIEW_5920292883_METAR_PROXY_NOT_COMPLIANCE",
+      "belowBaselineMediumMinimum": {
+        "thresholdSeconds": 315,
+        "belowCount": 13,
+        "totalPairs": 29,
+        "share": 0.4482758620689655,
+        "roundedPercent": 45,
+        "fog": {
+          "below": 12,
+          "total": 23
+        },
+        "cloudOnly": {
+          "below": 1,
+          "total": 6
+        }
+      },
+      "belowBaselineHeavyMinimum": {
+        "thresholdSeconds": 427.5,
+        "roundedPercent": 76,
+        "denominator": 29,
+        "countApproximate": 22,
+        "typeStratified": false
+      },
+      "intervalP25S": 281,
+      "observationInterpretation": "LOW_MODERATE_CONFIDENCE_SMALL_SAMPLE_LVP_DECLARATION_UNVERIFIED_HEAVY_MEDIUM_NOT_SEPARABLE"
     },
     "normalComparison": {
       "pairs": 108,
@@ -191,7 +216,14 @@
     "seedCount": 50,
     "pairedBootstrapReplicates": 1000,
     "bootstrapSeed": 20261117,
-    "casualtyStatus": "DEMAND_SYNTHETIC_NOT_OBSERVED"
+    "casualtyStatus": "DEMAND_SYNTHETIC_NOT_OBSERVED",
+    "saturatedArrivalDemandPerHour": 20,
+    "saturatedCasePurpose": "ARRIVAL_ONLY_LVP_SATURATED_DEMAND_TO_EXPOSE_10NM_FLOOR_APPROX_16_PER_H_AT_160KT",
+    "saturatedCompareToCapan2025ArrivalsPerHour": [
+      13,
+      14
+    ],
+    "saturatedReferenceStatus": "CAPAN_2025_COMPARATOR_REPORTED_BY_CLAUDE_NOT_OBSERVED_LVP_HOURLY_RATE"
   },
   "outputs": {
     "operationalCapacityClaim": false,
