@@ -1,10 +1,11 @@
 // Stage B2b TMA sequencing interventions. HYPOTHETICAL, NOT operational ATC.
 // A1.1 lock, A1.2 scheduler, and B1-P1 callback remain unchanged.
+import {readFileSync} from 'node:fs';
 import {requireS0Gate} from './calibration.mjs';
 import {ASSUMPTIONS,makeTmaManifest,runS0,allocateTmaDelay,evaluateS0} from './tma.mjs';
 import {simulate as schedule,DEFAULT_CONFIG as A12,CONDITIONAL,DISTANCE,TIME,
- minArrivalThresholdGapMs} from '../a12/model.mjs';
-import {wakeFloorNM} from '../a11/model.mjs';
+ minArrivalThresholdGapMs,A11_SPACING_PROVENANCE} from '../a12/model.mjs';
+import {wakeFloorNM,assignEffectiveTargets} from '../a11/model.mjs';
 import {spacingDecision,pairedBootstrap} from '../b1/model.mjs';
 import {digest} from '../core.mjs';
 export const HORIZONS=Object.freeze(['ENTRY','8MIN','5MIN']);
@@ -53,8 +54,20 @@ function swapPairs(m,h,assumptions){
 export function planTma(m,{policy='S1',horizon='ENTRY',assumptions=POLICY_ASSUMPTIONS}={}){
  must(['S1','S2'].includes(policy),'S1 or S2 only');
  must(HORIZONS.includes(horizon),'out-of-scope horizon');
- const {arrivals,swaps}=policy==='S2'?swapPairs(m,horizon,assumptions):
+ let {arrivals,swaps}=policy==='S2'?swapPairs(m,horizon,assumptions):
   {arrivals:[...m.arrivals],swaps:[]};
+ if(swaps.length){
+  // The A1.1 target depends on leader/follower type. Reapply the LOCKED
+  // distribution to the changed order using the SAME flight quantiles and
+  // normal draws; parameters, distributions and draws remain unchanged.
+  const params=JSON.parse(readFileSync(new URL('../a11/calibration-lock.json',import.meta.url),'utf8')).parameters;
+  const paired=assignEffectiveTargets({schema:11,synthetic:true,flights:[arrivals]},params).flights[0];
+  const core=assignEffectiveTargets({schema:11,synthetic:true,
+   flights:[arrivals.map(a=>({...a,componentQuantile:1}))]},params).flights[0];
+  arrivals=paired.map((a,i)=>({...a,coreTargetM:core[i].effectiveTargetM,
+   coreTargetSource:'A11_LOCKED_CORE_SAME_NORMAL',
+   arrivalSpacingSource:A11_SPACING_PROVENANCE.distribution}));
+ }
  const c={...A12,seed:m.seed,arrivalCount:arrivals.length,
   arrivalRequestStepMs:Math.round(HR/(arrivals.length/2))};
  let prior=null;
