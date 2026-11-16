@@ -13,6 +13,7 @@ const quant=(a,p)=>{if(!a.length)return null;const v=[...a].sort((x,y)=>x-y),t=(
 export const ASSUMPTIONS=Object.freeze({
   nonDelayJitterS:12, // UNVALIDATED: observational P10 not zero-delay time
   missingFixP10S:720, // UNVALIDATED placeholder for absent 06/fix strata
+  missingTmaFixP10S:350, // UNVALIDATED placeholder for absent boundary/fix strata
   pathStretchEquivalentSpeedKt:150, // UNVALIDATED, not actual aircraft speed
   entryRingJitterS:180, // UNVALIDATED; calibrated synthetic bunching
   entryRingJitterByRateS:{20:0}, // UNVALIDATED fitted high-demand input regularity
@@ -53,13 +54,17 @@ export function makeTmaManifest(rate,seed,settings=ASSUMPTIONS){
     (next()-.5)*2*jitterS*1000);
   const jitterMs=Math.round(next()*settings.nonDelayJitterS*1000);
   const eldtMs=ringMs+ref.seconds*1000+jitterMs;
-  return {entryIndex:i,fix,runway,vectored,ifFix,ringMs,eldtMs,
+  const tma=B2A.actualTmaEntry.byFix24[runway==='24'?fix:'']??null;
+  const tmaP10S=tma?.p10??settings.missingTmaFixP10S;
+  const tmaEntryMs=ringMs+Math.max(0,ref.seconds-tmaP10S)*1000;
+  return {entryIndex:i,fix,runway,vectored,ifFix,ringMs,eldtMs,tmaEntryMs,tmaP10S,
+   tmaEntrySource:tma?'B2A_TMA_POLYGON_FIX_P10':'UNVALIDATED_TMA_ENTRY_FIX_PROXY',
    unimpededS:ref.seconds,unimpededSource:ref.provenance,
    geometry:env(runway,ifFix),joinU:next(),spreadU:next()};
  });
  // Align simulation origin after all ring draws; 40NM crossings can precede t=0.
  const minEldt=Math.min(...entries.map(e=>e.eldtMs));
- if(minEldt<0)for(const e of entries){e.ringMs-=minEldt;e.eldtMs-=minEldt;}
+ if(minEldt<0)for(const e of entries){e.ringMs-=minEldt;e.eldtMs-=minEldt;e.tmaEntryMs-=minEldt;}
  // Important: type/wake/locked core fields belong to the preassigned A1.2
  // rank stream. Entry metadata are attached in ELDT order, BEFORE scheduling.
  entries.sort((a,b)=>a.eldtMs-b.eldtMs||a.entryIndex-b.entryIndex);
@@ -67,6 +72,8 @@ export function makeTmaManifest(rate,seed,settings=ASSUMPTIONS){
   const e=entries[i];
   return {...a,requestMs:e.eldtMs,entryIndex:e.entryIndex,entryFix:e.fix,
    runway:e.runway,ringMs:e.ringMs,eldtMs:e.eldtMs,vectored:e.vectored,
+   entryFlowLabel:e.fix==='CLKEX'?'RITAX (Brussels sector)':e.fix,
+   tmaEntryMs:e.tmaEntryMs,tmaP10S:e.tmaP10S,tmaEntrySource:e.tmaEntrySource,
    transitionIF:e.ifFix,publishedTransitionNM:e.geometry?.publishedNM??null,
    ratioP90:e.geometry?.ratio?.[2]??null,
    unimpededS:e.unimpededS,unimpededSource:e.unimpededSource,
