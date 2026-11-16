@@ -1,0 +1,233 @@
+{
+  "schema": 14,
+  "preset": "A14_MECHANICS_ONLY_UNVALIDATED_WITH_WINTER_DESCRIPTIVES",
+  "baseMainSha": "78fe7342d3a699aeccb39d614127f08395639199",
+  "lvpStateSource": "METAR_PROXY",
+  "sources": {
+    "procedure": "P-ATC-LVP",
+    "revision": 14,
+    "revisionDate": "2026-01-09",
+    "sections": {
+      "catIOnly": "3.3.1_REQUIRES_SOURCE_CONFIRMATION",
+      "metarThresholds": "PENDING_VERIFICATION",
+      "holdingPoint": "PENDING_VERIFICATION",
+      "criticalArea": "PENDING_VERIFICATION",
+      "casa": "PENDING_VERIFICATION",
+      "runwayExits": "PENDING_VERIFICATION"
+    },
+    "comments": [
+      6886017406,
+      6867161126,
+      6867697003,
+      6867738038,
+      6867938828,
+      6912637395,
+      6912766866,
+      6912811713,
+      "pullrequestreview-5920292883"
+    ]
+  },
+  "weatherThresholds": {
+    "preparationVisibilityM": 1500,
+    "preparationCeilingFt": 300,
+    "notificationRvrAM": 800,
+    "notificationCeilingFt": 200,
+    "metarResolutionMinutes": 30,
+    "sourceStatus": "PROCEDURE_THRESHOLD_APPLIED_TO_METAR_NOT_DECLARATION"
+  },
+  "runways": {
+    "24": {
+      "inboundPlanningNM": 10,
+      "planningType": "SHOULD_NOT_HARD_MINIMUM",
+      "exitNames": [
+        "D2",
+        "E",
+        "F",
+        "G"
+      ],
+      "protectionBasis": "CAT_II_III_ILS_CASA"
+    },
+    "06": {
+      "inboundPlanningNM": 10,
+      "planningType": "SEPARATE_RECOMMENDED_GO_AROUND_RISK_NOT_ILS_CAT_II_III",
+      "exitNames": [
+        "D1",
+        "C",
+        "END"
+      ],
+      "departureHoldingPoints": [
+        "G",
+        "B4"
+      ],
+      "observationalStatus": "PARAMETERS_ONLY_NO_OBSERVED_LVP_CASE"
+    }
+  },
+  "protection": {
+    "holdingInboundNM": {
+      "MEDIUM": 10,
+      "HEAVY": 15
+    },
+    "heavyCriticalAreaInsideNM": 12,
+    "arrivalCasaTriggerNM": 2,
+    "fullCasaByDefault": true,
+    "catIOnly": "EXPLICIT_PER_ARRIVAL_CREW_REQUEST_ONLY_TAXI_CASA_RELAXATION",
+    "departureBaseline": "SEQUENTIAL_AFTER_RUNWAY_VACATED",
+    "conditionalSensitivity": "HYPOTHETICAL_NOT_ELLX_LVP_PRACTICE"
+  },
+  "synthetic": {
+    "finalApproachSpeedKt": 160,
+    "approachSpeedSource": "UNVALIDATED_CONSTANT",
+    "arrivalROTMs": 90000,
+    "arrivalROTSensitivityMs": [
+      75000,
+      90000,
+      110000
+    ],
+    "lineupBehindPassageDelayMs": 30000,
+    "lineupBehindSource": "HYPOTHETICAL_ONLY",
+    "departureLineupMs": 45000,
+    "departureRollToAirborneMs": 55000,
+    "departureRunwayClearAfterAirborneMs": 10000,
+    "casaClearAfterLandingRunMs": 30000,
+    "landingRunEndAfterThresholdMs": 65000,
+    "taxiCasaClearMs": 45000,
+    "goAroundReentryDelayMs": 900000,
+    "allGroundTimingStatus": "SYNTHETIC_UNVALIDATED",
+    "hardSeparationNM": 3,
+    "hardRuleStatus": "SYNTHETIC_PLACEHOLDER_NOT_OPERATIVE_STANDARD"
+  },
+  "observedWinter": {
+    "source": "Claude #6912637395, A4_pairs dec_pairs.csv and lvp_target_pairs.csv, December 2025-February 2026 ANA/ADS-B/METAR annex aggregates",
+    "pairsPopulation": "ALL_DAY_CONSECUTIVE_ARRIVALS_INTERVAL_LT_600S_NOT_A11_BUSY",
+    "referenceOnly": true,
+    "decLvp": {
+      "pairs": 353,
+      "withDistance": 111,
+      "days": 16,
+      "distNM": [
+        7.86,
+        10.02,
+        11.51
+      ],
+      "intervalS": [
+        221,
+        302,
+        487
+      ]
+    },
+    "fogNoDeparture": {
+      "pairs": 54,
+      "withDistance": 17,
+      "days": 3,
+      "distNM": [
+        7.48,
+        10.01,
+        11.28
+      ],
+      "intervalS": [
+        232,
+        304,
+        461
+      ]
+    },
+    "cloudOnlyNoDeparture": {
+      "pairs": 43,
+      "withDistance": 19,
+      "days": 3,
+      "distNM": [
+        7.56,
+        9.1,
+        10.21
+      ],
+      "intervalS": [
+        186,
+        221,
+        521
+      ]
+    },
+    "lvpWithDeparture": {
+      "pairs": 29,
+      "withDistance": 9,
+      "days": 4,
+      "distNM": [
+        10.83,
+        12.08,
+        13.18
+      ],
+      "intervalS": [
+        266,
+        320,
+        503
+      ],
+      "belowBaselineMinimumShare": 0.4482758620689655,
+      "shareStatus": "OBSERVED_WINTER_AGGREGATE_CLAUDE_REVIEW_5920292883_METAR_PROXY_NOT_COMPLIANCE",
+      "belowBaselineMediumMinimum": {
+        "thresholdSeconds": 315,
+        "belowCount": 13,
+        "totalPairs": 29,
+        "share": 0.4482758620689655,
+        "roundedPercent": 45,
+        "fog": {
+          "below": 12,
+          "total": 23
+        },
+        "cloudOnly": {
+          "below": 1,
+          "total": 6
+        }
+      },
+      "belowBaselineHeavyMinimum": {
+        "thresholdSeconds": 427.5,
+        "roundedPercent": 76,
+        "denominator": 29,
+        "countApproximate": 22,
+        "typeStratified": false
+      },
+      "intervalP25S": 281,
+      "observationInterpretation": "LOW_MODERATE_CONFIDENCE_SMALL_SAMPLE_LVP_DECLARATION_UNVERIFIED_HEAVY_MEDIUM_NOT_SEPARABLE"
+    },
+    "normalComparison": {
+      "pairs": 108,
+      "withDistance": 54,
+      "days": 4,
+      "distNM": [
+        5.53,
+        6.69,
+        8.33
+      ],
+      "intervalS": [
+        146,
+        207,
+        450
+      ]
+    }
+  },
+  "scenario": {
+    "demandArrivalPerHour": 12,
+    "demandDeparturePerHour": 3,
+    "arrivalOnlyDemandHours": 2,
+    "mixedDemandHours": 2,
+    "measurementStartMs": 1800000,
+    "measurementEndMs": 5400000,
+    "drainEndMs": 14400000,
+    "arrivalRequestJitterMs": 10000,
+    "departureRequestJitterMs": 30000,
+    "seedStart": 20261116,
+    "seedCount": 50,
+    "pairedBootstrapReplicates": 1000,
+    "bootstrapSeed": 20261117,
+    "casualtyStatus": "DEMAND_SYNTHETIC_NOT_OBSERVED",
+    "saturatedArrivalDemandPerHour": 20,
+    "saturatedCasePurpose": "ARRIVAL_ONLY_LVP_SATURATED_DEMAND_TO_EXPOSE_10NM_FLOOR_APPROX_16_PER_H_AT_160KT",
+    "saturatedCompareToCapan2025ArrivalsPerHour": [
+      13,
+      14
+    ],
+    "saturatedReferenceStatus": "CAPAN_2025_COMPARATOR_REPORTED_BY_CLAUDE_NOT_OBSERVED_LVP_HOURLY_RATE"
+  },
+  "outputs": {
+    "operationalCapacityClaim": false,
+    "holdoutValidation": false,
+    "sourceStatus": "MECHANICS_ONLY_UNVALIDATED_WITH_WINTER_DESCRIPTIVES"
+  }
+}

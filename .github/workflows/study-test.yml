@@ -23,6 +23,7 @@ jobs:
       - name: A1.3 dev-only takeoff interval fit search (never change config)
         run: node study/a13/fit-ready-cli.mjs
       - run: node --test study/a13/*.test.mjs
+      - run: node --test study/a14/*.test.mjs
       - name: Verify old app files are untouched
         run: git diff --exit-code ef8737e1deed33327788d1319da1c232bd7cb027 HEAD -- index.html relay-worker.js README.md .nojekyll
       - name: A1.1 dev-only candidate (never committed)
@@ -61,6 +62,15 @@ jobs:
         with:
           name: a13-mechanics-candidate
           path: /tmp/a13-first-candidate.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: A1.4 LVP winter-reference and post-vacate candidate (synthetic)
+        run: node study/a14/cli.mjs --out /tmp/a14-lvp-candidate.json
+      - name: Export A1.4 LVP candidate (unvalidated, review only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: a14-lvp-mechanics-candidate
+          path: /tmp/a14-lvp-candidate.json
           retention-days: 14
           if-no-files-found: error
       - name: Synthetic outputs
