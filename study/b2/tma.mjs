@@ -51,7 +51,10 @@ export function makeTmaManifest(rate,seed,settings=ASSUMPTIONS){
    unimpededS:ref.seconds,unimpededSource:ref.provenance,
    geometry:env(runway,ifFix),joinU:next(),spreadU:next()};
  });
- // Align simulation origin after all ring draws; 40NM crossings can precede t=0.\n const minEldt=Math.min(...entries.map(e=>e.eldtMs));\n if(minEldt<0)for(const e of entries){e.ringMs-=minEldt;e.eldtMs-=minEldt;}\n // Important: type/wake/locked core fields belong to the preassigned A1.2
+ // Align simulation origin after all ring draws; 40NM crossings can precede t=0.
+ const minEldt=Math.min(...entries.map(e=>e.eldtMs));
+ if(minEldt<0)for(const e of entries){e.ringMs-=minEldt;e.eldtMs-=minEldt;}
+ // Important: type/wake/locked core fields belong to the preassigned A1.2
  // rank stream. Entry metadata are attached in ELDT order, BEFORE scheduling.
  entries.sort((a,b)=>a.eldtMs-b.eldtMs||a.entryIndex-b.entryIndex);
  const arrivals=raw.arrivals.map((a,i)=>{
