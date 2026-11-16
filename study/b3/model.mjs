@@ -144,20 +144,6 @@ export function casaAtTwoNM(leader,followerThresholdMs,followerType,leaderClearM
  return {event:'ARR_FOLLOWER_2NM',followerAtTwoNmMs:gateMs,leaderCasaTailClearMs:leaderClearMs,
   occupied:gateMs<leaderClearMs,clearMarginMs:gateMs-leaderClearMs};
 }
-function departureOpportunity(d,leader,follower,threshold,c){
- // Arrival-then-departure sequencing; passage is AFTER actual runway vacate.
- const passage=Math.max(d.requestMs,leader.runwayVacatedMs);
- const rollStart=Math.max(passage+c.synthetic.departureLineupMs,leader.runwayVacatedMs);
- const airborne=rollStart+c.synthetic.departureRollToAirborneMs;
- const depClear=airborne+c.synthetic.departureRunwayClearAfterAirborneMs;
- const holdNM=c.protection.holdingInboundNM[d.category];
- const holdTime=followerTimeMs(holdNM,follower.type);
- const chosen=Math.max(threshold,passage+holdTime,depClear,
-  leader.thresholdMs+requiredIntervalMs(leader,follower,{policy:'L2',target:.001}));
- // Last term is not a departure rule; must not alter the requested L1/L2
- // policy target. This function is redefined below without it.
- return {passage,rollStart,airborne,depClear,holdNM,holdTime,chosen};
-}
 export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={}){
  validate();check(m?.b3Version===VERSION&&m.runway==='24'&&m.synthetic,'B3 manifest');
  check(['L0','L1','L2'].includes(policy)&&CONFIG.tClearScale.includes(scale)&&
@@ -187,7 +173,8 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
    const passage=Math.max(d.requestMs,prev.runwayVacatedMs);
    const airborne=passage+c.synthetic.departureLineupMs+c.synthetic.departureRollToAirborneMs;
    const depClear=airborne+c.synthetic.departureRunwayClearAfterAirborneMs;
-   const holdTime=followerTimeMs(c.protection.holdingInboundNM[d.category],f.type);
+   const holdTime=policy==='L0'?Math.round(secondsFromNM(c.protection.holdingInboundNM[d.category],c)*1000):
+    followerTimeMs(c.protection.holdingInboundNM[d.category],f.type);
    const constrained=Math.max(threshold,passage+holdTime,depClear);
    depCandidate={d,passage,airborne,depClear,holdTime};
    if(constrained>threshold)departureGateBindings++;
@@ -218,7 +205,8 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
   // Re-test the prearranged departure at the actual re-entry threshold.
   if(depCandidate){
    const {d,passage,airborne,depClear,holdTime}=depCandidate;
-   const inbound=followerDistanceNM(threshold-passage,f.type);
+   const inbound=policy==='L0'?(threshold-passage)/1000*c.synthetic.finalApproachSpeedKt/3600:
+    followerDistanceNM(threshold-passage,f.type);
    const holdCheck=holdingDecision({departureCategory:d.category,inboundNM:inbound,
     phase:'NOTIFICATION',passageMs:passage},c);
    check(holdCheck.allowed&&threshold>=passage+holdTime&&
