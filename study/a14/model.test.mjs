@@ -155,3 +155,25 @@ test('L12 only unvalidated named assumptions and source-tagged procedure metadat
  assert.equal(CONFIG.protection.conditionalSensitivity,SENSITIVITY);
  assert.equal(CONFIG.outputs.operationalCapacityClaim,false);
 });
+
+test('L4 targeted ready-time fixture distinguishes actual post-vacate from hypothetical entry',()=>{
+ const m=makeManifest(CONFIG,{seed:88,arrivalOnly:false});
+ m.departures[0].requestMs=180000;m.departures[0].category='MEDIUM';
+ const actual=simulate(m,CONFIG,{entryPolicy:BASELINE});
+ const conditional=simulate(m,CONFIG,{entryPolicy:SENSITIVITY});
+ const a=actual.departures.find(x=>x.id==='DEP-0');
+ const b=conditional.departures.find(x=>x.id==='DEP-0');
+ assert.equal(a.status,'served');
+ assert.equal(b.status,'served');
+ assert.equal(a.runwayVacatedBeforeEntry,true);
+ assert.equal(b.runwayVacatedBeforeEntry,false);
+ assert.ok(a.holdingPointPassageMs>b.holdingPointPassageMs);
+ assert.equal(b.runwayEntryPractice,'HYPOTHETICAL_NOT_ELLX_LVP_PRACTICE');
+ assert.ok(actual.arrivals[1].thresholdMs>=conditional.arrivals[1].thresholdMs);
+});
+test('L4 holding gate is evaluated at passage time, not at roll or airborne',()=>{
+ const x=holdingDecision({departureCategory:'HEAVY',inboundNM:14.999,passageMs:1234});
+ assert.equal(x.allowed,false);
+ assert.equal(x.event,'CAT_II_III_HOLDING_POINT_PASSAGE');
+ assert.equal(x.passageMs,1234);
+});
