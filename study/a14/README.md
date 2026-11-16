@@ -95,6 +95,40 @@ throughput or capacity**. The 10.01NM fog median is from only
 not grounds to infer CAT I approaches. RWY06 has no suitable
 observed LVP cases. No independent winter held-out calibration exists.
 
+## Initial 50-seed result, interpret conservatively
+
+The first synthetic request fixture is **12 ARR/h and 3 DEP/h**, with
+two hours of demand, a one-hour measurement window and a separate drain.
+It produces **12 ARR/h** in the measured hour, with a median
+arrival-only interval of approximately **300.2s**, consistent in
+*interval scale* with the winter fog median **304s**. But the actual
+modelled arrival-only median separation is approximately **13.34NM**,
+**not** the observed 10.01NM fog median and **not** a fitted 10NM
+delivery distribution. This illustrates why an inverse-interval rate
+cannot be converted into observed delivered distance at a fixed
+synthetic 160kt speed. Do not describe the 50-seed run as a winter
+spacing calibration or validation.
+
+In mixed synthetic NOTIFICATION, the measured hour produces 12 ARR/h
+and 3 DEP/h with median arrival interval around **288s** and median
+delivered separation around **12.81NM**. **Every one of the six
+50-seed paired family comparisons produces zero hourly
+conditional-minus-baseline movement delta**, because the fixed
+synthetic request times do not create an earlier eligible holding-point
+opportunity. A separately constructed deterministic fixture proves
+that conditional line-up would change holding passage if it were
+hypothetically allowed; that **cannot** be interpreted as a
+benefit or actual practice in ELLX LVP.
+
+Most importantly, the *separate* hard holding-point feasibility
+calculation remains **315s medium / 427.5s heavy** for actual
+post-vacate entry versus observed mixed P10 **266s: FAIL**. The
+in-model traffic demand results do not override this procedural
+feasibility conflict. Claude's observed aggregate does not include
+the exact share of 29 LVP-with-departure intervals below 315s/427.5s;
+it remains **NOT_OBSERVED / not inferable from quantiles** pending
+an explicit aggregate calculation.
+
 ## What the prototype does, and does not
 
 The isolated `study/a14/` module has deterministic METAR phase, holding
