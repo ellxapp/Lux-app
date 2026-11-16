@@ -41,8 +41,10 @@ export function makeTmaManifest(rate,seed,settings=ASSUMPTIONS){
  assert(settings.tacticalSwapRate>=0&&settings.tacticalSwapRate<=.2,'swap fraction');
  const c=b2Config(rate,seed),raw=makeA12(c,'OBSERVED_LIKE_3_PER_H_2_HEAVY');
  const next=rng((seed^0xB2A2026)>>>0),step=H/rate;
+ // Single runway direction per synthetic two-hour session; 80/20 is cross-session mix.
+ const scenarioRunway=next()<B2A.runway24Share?'24':'06';
  const entries=Array.from({length:rate*2},(_,i)=>{
-  const fix=selected(next,fixEntries),runway=next()<B2A.runway24Share?'24':'06';
+  const fix=selected(next,fixEntries),runway=scenarioRunway;
   const vectored=next()>=B2A.transitionUse.share;
   const ifFix=vectored?null:selected(next,transitionWeights[runway]);
   const ref=p10(fix,runway,settings);
