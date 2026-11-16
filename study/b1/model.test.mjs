@@ -72,3 +72,15 @@ test('at matched seeds tool never violates hard arrival minima; r=0 deltas have 
  }
  assert.deepEqual(pairedBootstrap([0,0,0],5,1000).interval95,[0,0]);
 });
+
+test('in a saturated request scenario, the hypothetical indicator acts only on reachable queued core pairs',()=>{
+ const m=makeManifest(24,20261116);
+ const base=runOne(m,{policy:'P1',r:0,spreadNM:0,J:6,gapPolicy:DISTANCE});
+ const tool=runOne(m,{policy:'P1',r:.75,spreadNM:0,J:6,gapPolicy:DISTANCE});
+ assert.equal(tool.meta.manifestHash,base.meta.manifestHash);
+ assert.ok(tool.metrics.toolActedPairs>0,'must actually exercise the B1 transformation');
+ assert.ok(tool.arrivals.some(a=>a.b1ToolDecision),'tool decision diagnostics required');
+ assert.ok(tool.arrivals.every(a=>!a.b1ToolDecision||
+  (a.queueConditional&&a.b1ToolDecision.joinDistanceNM>=6)));
+ assert.equal(tool.metrics.hardMinimumViolations,0);
+});
