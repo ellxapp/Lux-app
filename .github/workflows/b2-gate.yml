@@ -12,4 +12,6 @@ jobs:
         with:
           node-version: '22'
       - run: node --test study/b2/*.test.mjs
+      - name: B2 S0 synthetic demand-bunching fit search (never intervention)
+        run: node study/b2/fit-cli.mjs
       - run: node study/b2/cli.mjs
