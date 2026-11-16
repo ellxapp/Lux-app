@@ -221,7 +221,7 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
    depUsed.add(d.id);
    departures.push({...d,status:'served',holdingPointPassageMs:passage,
     airborneMs:airborne,runwayClearMs:depClear,timeMs:airborne,
-    delayMs:airborne-d.requestMs,holdingCheck,runwayEntryPractice:POST_VACATE});
+    delayMs:airborne-d.requestMs,holdingCheck:holdCheck,runwayEntryPractice:POST_VACATE});
    events.push({id:d.id,event:'CAT_II_III_HOLDING_POINT_PASSAGE',timeMs:passage},
     {id:d.id,event:'DEPARTURE_AIRBORNE',timeMs:airborne});
   }
