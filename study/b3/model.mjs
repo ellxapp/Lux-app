@@ -76,8 +76,11 @@ export function clearanceQuantile(cls,p,scale=1,mix='EQUAL_SPLIT',c=CONFIG){
 export function clearanceClassMean(cls,scale=1,mix='EQUAL_SPLIT',c=CONFIG){
  return mean(exitChoices(cls,mix,c).map(exit=>mean(clearanceRange(exit,scale,c))));
 }
+const leaderTableCache=new Map();
 export function table({policy='L1',target=null,scale=1,mix='EQUAL_SPLIT'}={}){
  validate();check(['L1','L2'].includes(policy),'table policy');
+ const key=JSON.stringify([policy,target,scale,mix]);
+ if(leaderTableCache.has(key))return leaderTableCache.get(key);
  if(policy==='L2')check(CONFIG.l2TargetGoAroundRates.includes(target),'unapproved target');
  const result={};
  for(const cls of ['TP','MEDIUM_JET','HEAVY']){
@@ -91,6 +94,7 @@ export function table({policy='L1',target=null,scale=1,mix='EQUAL_SPLIT'}={}){
    targetCasaGoAroundRate:policy==='L2'?target:null,quantile:quantileTarget,
    clearanceStatus:'UNVALIDATED_UNIFORM_MIXTURE_NOT_FRACS'};
  }
+ leaderTableCache.set(key,result);
  return result;
 }
 // Profile: 160 kt outside 4 NM, then A1.1 type-specific 4–0 NM speed.
@@ -153,8 +157,10 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
  const c=a14Config(depPerHour),tab=policy==='L0'?null:table({policy,target,scale,mix});
  const arrivals=[],departures=[],events=[],attempts=[],holds=[],depUsed=new Set();
  const reqs=m.departures;
- let prev=null,missCasa=0,missCritical=0,censoredArrivals=0,departureGateBindings=0;
+ let prev=null,missCasa=0,missCritical=0,censoredArrivals=0,departureGateBindings=0,stopped=false;
  for(const f of m.arrivals){
+  if(stopped){censoredArrivals++;arrivals.push({...f,status:'censored',thresholdMs:null,
+   delayMs:null,reason:'DRAIN_HORIZON',attemptCount:0});continue;}
   if(prev===null){
    const x=getExit(f,mix,scale),thresholdMs=f.requestMs;
    const row={...f,status:'served',thresholdMs,delayMs:0,exit:x.exit,
@@ -220,7 +226,7 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
     {id:d.id,event:'DEPARTURE_AIRBORNE',timeMs:airborne});
   }
   if(threshold>CONFIG.drainEndMs){
-   censoredArrivals++;arrivals.push({...f,status:'censored',thresholdMs:null,
+   stopped=true;censoredArrivals++;arrivals.push({...f,status:'censored',thresholdMs:null,
     delayMs:null,attemptCount:count,reason:'DRAIN_HORIZON'});continue;
   }
   const exit=getExit(f,mix,scale);
