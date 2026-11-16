@@ -26,6 +26,8 @@ jobs:
       - run: node --test study/a14/*.test.mjs
       - run: node --test study/b1/*.test.mjs
       - run: node --test study/b2/*.test.mjs
+      - name: B2 S0 observational calibration diagnostics (must not report S1/S2 on fail)
+        run: node study/b2/cli.mjs
       - name: Verify old app files are untouched
         run: git diff --exit-code ef8737e1deed33327788d1319da1c232bd7cb027 HEAD -- index.html relay-worker.js README.md .nojekyll
       - name: A1.1 dev-only candidate (never committed)
