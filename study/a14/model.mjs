@@ -273,6 +273,9 @@ export function runReplication(c=CONFIG){
      metrics:Object.fromEntries(metrics.map(k=>[k,desc(rows.map(r=>r.result.metrics[k]))])),
      arrivalIntervalMedianS:desc(rows.map(r=>r.result.metrics.arrivalIntervalsSeconds.median)),
      deliveredSpacingMedianNM:desc(rows.map(r=>r.result.metrics.arrivalSpacingNM.median)),
+     floorBoundCount:desc(rows.map(r=>r.result.metrics.floorBoundArrivalPairs.count)),
+     floorBoundMedianNM:desc(rows.map(r=>r.result.metrics.floorBoundArrivalPairs.distanceNM.median).filter(Number.isFinite)),
+     floorBoundIntervalMedianS:desc(rows.map(r=>r.result.metrics.floorBoundArrivalPairs.intervalSeconds.median).filter(Number.isFinite)),
      allDemandReconciled:rows.every(r=>r.result.totals.arrivalRequests===r.result.totals.servedArrivals&&
       r.result.totals.departureRequests===r.result.totals.servedDepartures+r.result.totals.censoredDepartures),
      perSeed:rows.map(r=>({seed:r.seed,manifestHash:r.manifestHash,
@@ -303,6 +306,8 @@ export function runReplication(c=CONFIG){
   observedWinter:c.observedWinter,observedValidation:'REFERENCE_ONLY_NO_HOLDOUT',
   baselineMixedFeasibility:{medium,heavy,
    observedShareBelowModelMin:c.observedWinter.lvpWithDeparture.belowBaselineMinimumShare,
+   observedBelowBaselineMedium:c.observedWinter.lvpWithDeparture.belowBaselineMediumMinimum,
+   observedBelowBaselineHeavy:c.observedWinter.lvpWithDeparture.belowBaselineHeavyMinimum,
    observedShareStatus:c.observedWinter.lvpWithDeparture.shareStatus,
    overall:'FAIL_MODEL_ASSUMPTION_CONFLICT'},
   conditionalSensitivity:{medium:feasibleMixedGap(c,{category:'MEDIUM',entryPolicy:SENSITIVITY}),
