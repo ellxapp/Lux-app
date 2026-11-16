@@ -16,7 +16,14 @@ export const B2A=Object.freeze({
   transitionUse:{share:0.67,denominator:2743,approximate:true},
   runway24Share:0.80,
   entryMix:{GIVOR:.27,BITBU:.22,MMD:.20,CLKEX:.18,DYINB:.05,RMS:.04,LADAT:.02,DIK:.01},
-  actualTmaEntry:{source:'ellxapp/panel#6 comment 6922589286',n:686,all:{p10:305,median:565,p90:792},\n    byFix24:{BITBU:{n:140,p10:279,median:317,p90:509},RMS:{n:30,p10:276,median:307,p90:346},\n     GIVOR:{n:161,p10:452,median:503,p90:645},CLKEX:{n:141,p10:582,median:641,p90:773},\n     MMD:{n:124,p10:662,median:763,p90:911}},\n    planningHorizons:['ENTRY','8MIN','5MIN'],\n    labelAlias:{CLKEX:'RITAX (Brussels sector)'},\n    note:'TMA polygon and altitude cap based on existing Lux-app GEO.areas; supersedes 40NM ring only for horizon design'},\n  fixRunway24:{
+  actualTmaEntry:{source:'ellxapp/panel#6 comment 6922589286',n:686,all:{p10:305,median:565,p90:792},
+    byFix24:{BITBU:{n:140,p10:279,median:317,p90:509},RMS:{n:30,p10:276,median:307,p90:346},
+     GIVOR:{n:161,p10:452,median:503,p90:645},CLKEX:{n:141,p10:582,median:641,p90:773},
+     MMD:{n:124,p10:662,median:763,p90:911}},
+    planningHorizons:['ENTRY','8MIN','5MIN'],
+    labelAlias:{CLKEX:'RITAX (Brussels sector)'},
+    note:'TMA polygon and altitude cap based on existing Lux-app GEO.areas; supersedes 40NM ring only for horizon design'},
+  fixRunway24:{
     GIVOR:{n:161,p10:757,median:839,p90:994,flownMedianNM:54},
     CLKEX:{n:141,p10:715,median:782,p90:946,flownMedianNM:54},
     BITBU:{n:140,p10:610,median:674,p90:921,flownMedianNM:39},
