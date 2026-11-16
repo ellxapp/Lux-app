@@ -12,6 +12,13 @@ jobs:
         with:
           node-version: '22'
       - run: node --test study/b2/*.test.mjs
-      - name: B2 S0 synthetic demand-bunching fit search (never intervention)
-        run: node study/b2/fit-cli.mjs
       - run: node study/b2/cli.mjs
+      - name: B2 gated S1 S2 and joint P1 sensitivity (50 seeds)
+        run: node study/b2/candidate-cli.mjs --out /tmp/b2-sequencing-candidate.json
+      - name: Export B2 non-operational aggregate-only candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-sequencing-hypothetical-not-operational
+          path: /tmp/b2-sequencing-candidate.json
+          retention-days: 14
+          if-no-files-found: error
