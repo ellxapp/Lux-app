@@ -7,7 +7,7 @@ import {CONFIG as A14,BASELINE as POST_VACATE,makeManifest as a14Manifest,
  heavyCriticalDecision} from '../a14/model.mjs';
 import {APPROVED_TYPE_WEIGHTS,selectType,wakeFloorNM,profileFor} from '../a11/model.mjs';
 export const CONFIG=Object.freeze(JSON.parse(readFileSync(new URL('./B3_HYPOTHETICAL.json',import.meta.url),'utf8')));
-export const VERSION='B3-LVP-LEADER-SPACING-CANDIDATE-1';
+export const VERSION='B3-LVP-LEADER-SPACING-R1-R2-N1-CANDIDATE-2';
 const H=3600000;
 const check=(yes,why)=>{if(!yes)throw Error(why);};
 const rand=seed=>{let x=seed>>>0||1;return()=>{x^=x<<13;x^=x>>>17;x^=x<<5;return(x>>>0)/4294967296;};};
@@ -25,6 +25,8 @@ export function validate(c=CONFIG){
   c.tClearUniformDeviationFraction===.25,'declared Tclear sensitivity');
  check(JSON.stringify(c.allowedExitByLeader)==='{"TP":["D2","E"],"MEDIUM_JET":["D2","E"],"HEAVY":["E","G","END"]}',
   'Philip corrected exit choices');
+ check(JSON.stringify(c.missedExitProbabilities)==='[0.02,0.05,0.1]'&&
+ JSON.stringify(c.missedExitMap)==='{"D2":"E","E":"G","G":"END","END":"END"}','R2 tail');
  check(c.casaStripHalfWidthM===140&&c.hardSurveillanceNM===3,'geometry/hard surveillance');
  check(c.measurementEndMs-c.measurementStartMs===H&&c.drainEndMs>2*H,'measurement and drain');
  return c;
@@ -56,43 +58,71 @@ export function clearanceTime(exit,u,scale=1,c=CONFIG){
  check(u>=0&&u<1,'immutable clearance draw');
  const [lo,hi]=clearanceRange(exit,scale,c);return lo+(hi-lo)*u;
 }
-export function clearanceCdf(cls,t,scale=1,mix='EQUAL_SPLIT',c=CONFIG){
- const choices=exitChoices(cls,mix,c);
- return choices.reduce((sum,exit)=>{const [lo,hi]=clearanceRange(exit,scale,c);
-  return sum+Math.min(1,Math.max(0,(t-lo)/(hi-lo)))/choices.length;
+
+export function nextExit(exit,c=CONFIG){
+ check(c.exits[exit]&&c.missedExitMap[exit],'missed-exit source');
+ return c.missedExitMap[exit];
+}
+export function actualExit(plannedExit,missDraw,pMiss,c=CONFIG){
+ check(missDraw>=0&&missDraw<1&&c.missedExitProbabilities.includes(pMiss),'missed exit draw/p');
+ return missDraw<pMiss?nextExit(plannedExit,c):plannedExit;
+}
+export function clearanceComponents(cls,scale=1,mix='EQUAL_SPLIT',pMiss=.02,c=CONFIG){
+ check(c.missedExitProbabilities.includes(pMiss),'unvalidated tail sweep');
+ const planned=exitChoices(cls,mix,c),weighted=[];
+ for(const exit of planned){
+  weighted.push({exit,weight:(1-pMiss)/planned.length,plannedExit:exit,missed:false,
+   range:clearanceRange(exit,scale,c)});
+  weighted.push({exit:nextExit(exit,c),weight:pMiss/planned.length,
+   plannedExit:exit,missed:nextExit(exit,c)!==exit,
+   range:clearanceRange(nextExit(exit,c),scale,c)});
+ }
+ return weighted;
+}
+export function clearanceCdf(cls,t,scale=1,mix='EQUAL_SPLIT',pMiss=.02,c=CONFIG){
+ return clearanceComponents(cls,scale,mix,pMiss,c).reduce((sum,x)=>{
+  const [lo,hi]=x.range;
+  return sum+x.weight*Math.min(1,Math.max(0,(t-lo)/(hi-lo)));
  },0);
 }
-// Analytic inversion of a finite uniform-mixture CDF. No simulation fitting.
-export function clearanceQuantile(cls,p,scale=1,mix='EQUAL_SPLIT',c=CONFIG){
+// Analytic inverse of the finite exit mixture, including missed-next-exit tail.
+export function clearanceQuantile(cls,p,scale=1,mix='EQUAL_SPLIT',pMiss=.02,c=CONFIG){
  check(p>=0&&p<=1,'quantile');
- const ranges=exitChoices(cls,mix,c).map(e=>clearanceRange(e,scale,c));
- let lo=Math.min(...ranges.map(x=>x[0])),hi=Math.max(...ranges.map(x=>x[1]));
+ const components=clearanceComponents(cls,scale,mix,pMiss,c);
+ let lo=Math.min(...components.map(x=>x.range[0])),
+  hi=Math.max(...components.map(x=>x.range[1]));
  if(p===0)return lo;if(p===1)return hi;
  for(let k=0;k<65;k++){const mid=(lo+hi)/2;
-  if(clearanceCdf(cls,mid,scale,mix,c)<p)lo=mid;else hi=mid;
+  if(clearanceCdf(cls,mid,scale,mix,pMiss,c)<p)lo=mid;else hi=mid;
  }
  return (lo+hi)/2;
 }
-export function clearanceClassMean(cls,scale=1,mix='EQUAL_SPLIT',c=CONFIG){
- return mean(exitChoices(cls,mix,c).map(exit=>mean(clearanceRange(exit,scale,c))));
+export function clearanceClassMean(cls,scale=1,mix='EQUAL_SPLIT',pMiss=.02,c=CONFIG){
+ return clearanceComponents(cls,scale,mix,pMiss,c).reduce((sum,x)=>
+  sum+x.weight*mean(x.range),0);
+}
+export function clearanceUpperBound(cls,scale=1,mix='EQUAL_SPLIT',pMiss=.02,c=CONFIG){
+ return Math.max(...clearanceComponents(cls,scale,mix,pMiss,c).map(x=>x.range[1]));
 }
 const leaderTableCache=new Map();
-export function table({policy='L1',target=null,scale=1,mix='EQUAL_SPLIT'}={}){
+export function table({policy='L1',target=null,scale=1,mix='EQUAL_SPLIT',pMiss=.02}={}){
  validate();check(['L1','L2'].includes(policy),'table policy');
- const key=JSON.stringify([policy,target,scale,mix]);
+ check(CONFIG.missedExitProbabilities.includes(pMiss),'tail probability');
+ const key=JSON.stringify([policy,target,scale,mix,pMiss]);
  if(leaderTableCache.has(key))return leaderTableCache.get(key);
  if(policy==='L2')check(CONFIG.l2TargetGoAroundRates.includes(target),'unapproved target');
  const result={};
  for(const cls of ['TP','MEDIUM_JET','HEAVY']){
-  const center=clearanceClassMean(cls,scale,mix);
-  const margin=policy==='L1'?CONFIG.l1FixedMarginSeconds:0;
+  const center=clearanceClassMean(cls,scale,mix,pMiss);
   const quantileTarget=policy==='L2'?1-target:null;
-  const sized=policy==='L2'?clearanceQuantile(cls,quantileTarget,scale,mix):center+margin;
-  result[cls]={leaderClass:cls,exitChoices:exitChoices(cls,mix),
+  const sized=policy==='L2'?clearanceQuantile(cls,quantileTarget,scale,mix,pMiss):
+   clearanceUpperBound(cls,scale,mix,pMiss);
+  result[cls]={leaderClass:cls,plannedExitChoices:exitChoices(cls,mix),
    clearMeanS:center,clearanceTargetS:sized,marginAboveMeanS:sized-center,
-   sizing:policy==='L2'?'ANALYTIC_MIXTURE_CDF_QUANTILE':'MEAN_PLUS_DECLARED_FIXED_MARGIN',
+   sizing:policy==='L2'?'ANALYTIC_MISSED_EXIT_MIXTURE_CDF_QUANTILE':
+    'DETERMINISTIC_UPPER_BOUND_OF_FULL_CLEARANCE_RANGE_INCLUDING_MISSED_EXIT',
    targetCasaGoAroundRate:policy==='L2'?target:null,quantile:quantileTarget,
-   clearanceStatus:'UNVALIDATED_UNIFORM_MIXTURE_NOT_FRACS'};
+   pMiss,clearanceStatus:'UNVALIDATED_PLANNED_AND_MISSED_EXIT_MIXTURE_NOT_FRACS'};
  }
  leaderTableCache.set(key,result);
  return result;
@@ -112,10 +142,10 @@ export function followerDistanceNM(timeMs,type){
  return timeMs<=first?timeMs*low/3600000:4+(timeMs-first)*CONFIG.syntheticFinalAbove4NmKt/3600000;
 }
 export function requiredIntervalMs(leader,follower,{policy='L0',target=null,
- scale=1,mix='EQUAL_SPLIT'}={}){
+ scale=1,mix='EQUAL_SPLIT',pMiss=.02}={}){
  check(['L0','L1','L2'].includes(policy),'spacing policy');
  if(policy==='L0')return Math.round(secondsFromNM(10,A14)*1000);
- const row=table({policy,target,scale,mix})[leader.leaderClass];
+ const row=table({policy,target,scale,mix,pMiss})[leader.leaderClass];
  const physicalClearToTwoNmMs=Math.round(1000*row.clearanceTargetS)+followerTimeMs(2,follower.type);
  const hardNM=Math.max(CONFIG.hardSurveillanceNM,wakeFloorNM(leader.wake,follower.wake));
  const hardMs=followerTimeMs(hardNM,follower.type);
@@ -134,27 +164,29 @@ export function manifest({seed=CONFIG.seedStart,rate=12,depPerHour=0}={}){
  const next=rand((seed^0xB30024)>>>0);
  return {...base,synthetic:true,runway:'24',b3Version:VERSION,
   arrivals:base.arrivals.map(a=>{const t=selectType(next());return {...a,type:t.type,wake:t.wake,
-   leaderClass:leaderClass(t.type),exitQuantile:next(),clearanceQuantile:next(),
+   leaderClass:leaderClass(t.type),exitQuantile:next(),missedExitQuantile:next(),clearanceQuantile:next(),
    heavyCriticalAreaOccupied:false,criticalHeavyInboundNM:20};}),
   source:'SYNTHETIC_IMMUTABLE_WITH_UNVALIDATED_EXIT_AND_CLEARANCE_DRAWS',
   a14ModelVersion:'A1.4-D1-floor-bound-saturation-candidate-2'};
 }
-function getExit(a,mix,scale){
- const exit=chooseExit(a.leaderClass,a.exitQuantile,mix);
- return {exit,clearanceS:clearanceTime(exit,a.clearanceQuantile,scale)};
+function getExit(a,mix,scale,pMiss){
+ const plannedExit=chooseExit(a.leaderClass,a.exitQuantile,mix);
+ const exit=actualExit(plannedExit,a.missedExitQuantile,pMiss);
+ return {plannedExit,exit,missedExit:exit!==plannedExit,
+  clearanceS:clearanceTime(exit,a.clearanceQuantile,scale)};
 }
 export function casaAtTwoNM(leader,followerThresholdMs,followerType,leaderClearMs){
  const gateMs=followerThresholdMs-followerTimeMs(2,followerType);
  return {event:'ARR_FOLLOWER_2NM',followerAtTwoNmMs:gateMs,leaderCasaTailClearMs:leaderClearMs,
   occupied:gateMs<leaderClearMs,clearMarginMs:gateMs-leaderClearMs};
 }
-export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={}){
+export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT',pMiss=.02}={}){
  validate();check(m?.b3Version===VERSION&&m.runway==='24'&&m.synthetic,'B3 manifest');
  check(['L0','L1','L2'].includes(policy)&&CONFIG.tClearScale.includes(scale)&&
-  CONFIG.exitMixScenarios.includes(mix),'scenario');
+  CONFIG.exitMixScenarios.includes(mix)&&CONFIG.missedExitProbabilities.includes(pMiss),'scenario');
  if(policy==='L2')check(CONFIG.l2TargetGoAroundRates.includes(target),'L2 target');
  const depPerHour=m.departures.length/CONFIG.demandHours;
- const c=a14Config(depPerHour),tab=policy==='L0'?null:table({policy,target,scale,mix});
+ const c=a14Config(depPerHour),tab=policy==='L0'?null:table({policy,target,scale,mix,pMiss});
  const arrivals=[],departures=[],events=[],attempts=[],holds=[],depUsed=new Set();
  const reqs=m.departures;
  let prev=null,missCasa=0,missCritical=0,censoredArrivals=0,departureGateBindings=0,
@@ -164,15 +196,15 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
   if(stopped){censoredArrivals++;arrivals.push({...f,status:'censored',thresholdMs:null,
    delayMs:null,reason:'DRAIN_HORIZON',attemptCount:0});continue;}
   if(prev===null){
-   const x=getExit(f,mix,scale),thresholdMs=f.requestMs;
-   const row={...f,status:'served',thresholdMs,delayMs:0,exit:x.exit,
+   const x=getExit(f,mix,scale,pMiss),thresholdMs=f.requestMs;
+   const row={...f,status:'served',thresholdMs,delayMs:0,exit:x.exit,plannedExit:x.plannedExit,missedExit:x.missedExit,
     casaClearMs:thresholdMs+Math.round(x.clearanceS*1000),sampledTclearS:x.clearanceS,
     runwayVacatedMs:thresholdMs+c.synthetic.arrivalROTMs,
     landingRunEndMs:thresholdMs+c.synthetic.landingRunEndAfterThresholdMs,
     attemptCount:1};
    arrivals.push(row);events.push({id:f.id,event:'ARR_THRESHOLD',timeMs:thresholdMs});prev=row;continue;
   }
-  const gap=requiredIntervalMs(prev,f,{policy,target,scale,mix});
+  const gap=requiredIntervalMs(prev,f,{policy,target,scale,mix,pMiss});
   const hardMinGap=followerTimeMs(Math.max(c.synthetic.hardSeparationNM,
    wakeFloorNM(prev.wake,f.wake)),f.type);
   const casaTableGap=policy==='L0'?null:
@@ -245,9 +277,10 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
    stopped=true;censoredArrivals++;arrivals.push({...f,status:'censored',thresholdMs:null,
     delayMs:null,attemptCount:count,reason:'DRAIN_HORIZON'});continue;
   }
-  const exit=getExit(f,mix,scale);
+  const exit=getExit(f,mix,scale,pMiss);
   const row={...f,status:'served',thresholdMs:threshold,delayMs:threshold-f.requestMs,
-   exit:exit.exit,sampledTclearS:exit.clearanceS,
+   exit:exit.exit,plannedExit:exit.plannedExit,missedExit:exit.missedExit,
+   sampledTclearS:exit.clearanceS,
    casaClearMs:threshold+Math.round(exit.clearanceS*1000),
    runwayVacatedMs:threshold+c.synthetic.arrivalROTMs,
    landingRunEndMs:threshold+c.synthetic.landingRunEndAfterThresholdMs,
@@ -281,7 +314,7 @@ export function simulate(m,{policy='L0',target=null,scale=1,mix='EQUAL_SPLIT'}={
  const pairIntervals=servedArr.slice(1).map((a,i)=>(a.thresholdMs-servedArr[i].thresholdMs)/1000);
  const delays=windowArr.map(x=>x.delayMs/1000);
  const exposures=servedArr.length-1+attempts.filter(x=>x.reason==='CASA_OCCUPIED_AT_2NM').length;
- return {meta:{version:VERSION,runway:'24',phase:'NOTIFICATION',policy,target,scale,mix,
+ return {meta:{version:VERSION,runway:'24',phase:'NOTIFICATION',policy,target,scale,mix,pMiss,
    manifestHash:digest(m),configHash:digest(CONFIG),entryPolicy:POST_VACATE,
    operational:false,approval:[6925949716,6925987977]},
   totals:{arrivalRequests:m.arrivals.length,departureRequests:m.departures.length,
@@ -366,16 +399,16 @@ export function pairedCI(a,seed=CONFIG.bootstrapSeed){
 }
 export function runSweep({seedCount=CONFIG.seeds,rates=[...CONFIG.demandArrivalPerHour,
  CONFIG.saturatedProbeArrivalPerHour],scales=CONFIG.tClearScale,
- mixes=CONFIG.exitMixScenarios}={}){
+ mixes=CONFIG.exitMixScenarios,missedExitProbabilities=CONFIG.missedExitProbabilities}={}){
  validate();check(seedCount>=50,'at least 50 matched seeds');
  const scenarios=[];
  for(const rate of rates)for(const depPerHour of CONFIG.departurePerHour)
-  for(const scale of scales)for(const mix of mixes){
+  for(const scale of scales)for(const mix of mixes)for(const pMiss of missedExitProbabilities){
    const ms=Array.from({length:seedCount},(_,i)=>manifest({seed:CONFIG.seedStart+i,rate,depPerHour}));
-   const base=ms.map(m=>simulate(m,{policy:'L0',scale,mix}));
+   const base=ms.map(m=>simulate(m,{policy:'L0',scale,mix,pMiss}));
    for(const policy of ['L0','L1','L2'])for(const target of
     policy==='L2'?CONFIG.l2TargetGoAroundRates:[null]){
-    const runs=policy==='L0'?base:ms.map(m=>simulate(m,{policy,target,scale,mix}));
+    const runs=policy==='L0'?base:ms.map(m=>simulate(m,{policy,target,scale,mix,pMiss}));
     const a0=base.map(x=>x.metrics),a1=runs.map(x=>x.metrics);
     const metrics=['arrivalsPerHour','departuresPerHour','arrivalDelayMeanS','arrivalDelayP90S'];
     const deltas=Object.fromEntries(metrics.map((name,i)=>[name,pairedCI(a1.map((x,j)=>
@@ -401,7 +434,8 @@ export function runSweep({seedCount=CONFIG.seeds,rates=[...CONFIG.demandArrivalP
     const drainPaired=Object.fromEntries(['servedArrivalsByDrain','servedDeparturesByDrain'].map((k,i)=>
      [k,pairedCI(totals.map((v,j)=>v[k]-base[j].totals[k]),CONFIG.bootstrapSeed+rate*100+i)]));
     scenarios.push({rate,depPerHour,saturatedProbe:rate===CONFIG.saturatedProbeArrivalPerHour,
-     scale,mix,policy,target,seedCount,baselineA14Lock:'READ_ONLY',
+     headlineWinter:CONFIG.demandArrivalPerHour.includes(rate),
+     scale,mix,pMiss,policy,target,seedCount,baselineA14Lock:'READ_ONLY',
      manifestHashes:ms.map(digest),pairedEqualManifests:runs.every((x,i)=>
       x.meta.manifestHash===base[i].meta.manifestHash),
      means:averages,byDrain:drain,pairedByDrain:drainPaired,
