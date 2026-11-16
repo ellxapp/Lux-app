@@ -45,7 +45,6 @@
     1.25
   ],
   "tClearUniformDeviationFraction": 0.25,
-  "l1FixedMarginSeconds": 10,
   "exits": {
     "D2": {
       "thr24DistanceM": 2050,
@@ -106,6 +105,20 @@
     "T_CLEAR_GEOMETRY_TIMES_EXIT_SPLITS_UNVALIDATED",
     "A14_L4_FAIL_MODEL_ASSUMPTION_CONFLICT",
     "NO_OBSERVED_GO_AROUND_RISK",
-    "NO_OPERATIONAL_CAPACITY_OR_SAFETY_CLAIM"
-  ]
+    "NO_OPERATIONAL_CAPACITY_OR_SAFETY_CLAIM",
+    "MISSED_EXIT_TAIL_UNVALIDATED",
+    "L1_MAXIMUM_RANGE_IS_CONSERVATIVE_BY_CONSTRUCTION_NOT_VALIDATED"
+  ],
+  "missedExitProbabilities": [
+    0.02,
+    0.05,
+    0.1
+  ],
+  "missedExitMap": {
+    "D2": "E",
+    "E": "G",
+    "G": "END",
+    "END": "END"
+  },
+  "review": "pullrequestreview-5925985825"
 }
