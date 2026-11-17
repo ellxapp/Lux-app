@@ -1,4 +1,4 @@
-name: Study Stages A, B1 and B2 tests
+name: Study Stages A, B1, B2 and B3 tests
 on:
   pull_request:
     paths:
@@ -26,6 +26,7 @@ jobs:
       - run: node --test study/a14/*.test.mjs
       - run: node --test study/b1/*.test.mjs
       - run: node --test study/b2/*.test.mjs
+      - run: node --test study/b3/*.test.mjs
       - name: B2 S0 observational calibration diagnostics (must not report S1/S2 on fail)
         run: node study/b2/cli.mjs
       - name: Verify old app files are untouched
@@ -84,6 +85,15 @@ jobs:
         with:
           name: b1-spacing-hypothetical-not-operational
           path: /tmp/b1-spacing-sensitivity.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: B3 hypothetical RWY24 LVP leader spacing (analytic L2)
+        run: node study/b3/cli.mjs --out /tmp/b3-lvp-leader-spacing.json
+      - name: Publish B3 non-operational candidate for independent review
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-rwy24-lvp-leader-spacing-hypothetical
+          path: /tmp/b3-lvp-leader-spacing.json
           retention-days: 14
           if-no-files-found: error
       - name: Synthetic outputs

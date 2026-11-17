@@ -1,0 +1,124 @@
+{
+  "schema": 3,
+  "status": "NON_OPERATIONAL_HYPOTHETICAL_RWY24_CAT_II_III_LVP",
+  "baseMain": "c11ca1c",
+  "approval": [
+    6925949716,
+    6925987977
+  ],
+  "exitCorrection": 6925893435,
+  "geometrySource": 6925714791,
+  "runway": "24",
+  "phase": "NOTIFICATION",
+  "policies": [
+    "L0",
+    "L1",
+    "L2"
+  ],
+  "demandArrivalPerHour": [
+    10,
+    12,
+    14,
+    16
+  ],
+  "saturatedProbeArrivalPerHour": 20,
+  "departurePerHour": [
+    0,
+    2
+  ],
+  "demandHours": 2,
+  "measurementStartMs": 1800000,
+  "measurementEndMs": 5400000,
+  "drainEndMs": 14400000,
+  "seeds": 50,
+  "seedStart": 20261116,
+  "bootstrapResamples": 1000,
+  "bootstrapSeed": 20261119,
+  "l2TargetGoAroundRates": [
+    0.01,
+    0.005,
+    0.001
+  ],
+  "tClearScale": [
+    0.75,
+    1,
+    1.25
+  ],
+  "tClearUniformDeviationFraction": 0.25,
+  "exits": {
+    "D2": {
+      "thr24DistanceM": 2050,
+      "centralCasaTailClearSeconds": 85
+    },
+    "E": {
+      "thr24DistanceM": 2430,
+      "centralCasaTailClearSeconds": 97.5
+    },
+    "G": {
+      "thr24DistanceM": 3240,
+      "centralCasaTailClearSeconds": 117.5
+    },
+    "END": {
+      "thr24DistanceM": 3950,
+      "centralCasaTailClearSeconds": 135
+    }
+  },
+  "allowedExitByLeader": {
+    "TP": [
+      "D2",
+      "E"
+    ],
+    "MEDIUM_JET": [
+      "D2",
+      "E"
+    ],
+    "HEAVY": [
+      "E",
+      "G",
+      "END"
+    ]
+  },
+  "exitMixScenarios": [
+    "EQUAL_SPLIT",
+    "TP_MEDIUM_ALL_D2",
+    "TP_MEDIUM_ALL_E",
+    "HEAVY_ALL_E",
+    "HEAVY_ALL_END"
+  ],
+  "casaStripHalfWidthM": 140,
+  "geometryUncertaintyM": 30,
+  "syntheticFinalAbove4NmKt": 160,
+  "syntheticGoAroundReentryDelayMs": 900000,
+  "hardSurveillanceNM": 3,
+  "syntheticRunwayVacateMs": 90000,
+  "winterFogReference": {
+    "medianDistanceNM": 10.01,
+    "medianIntervalS": 304
+  },
+  "capanReferenceArrivalsPerHour": [
+    13,
+    14
+  ],
+  "confidence": 0.95,
+  "limitations": [
+    "LVP_STATE_METAR_PROXY_NOT_DECLARATION",
+    "T_CLEAR_GEOMETRY_TIMES_EXIT_SPLITS_UNVALIDATED",
+    "A14_L4_FAIL_MODEL_ASSUMPTION_CONFLICT",
+    "NO_OBSERVED_GO_AROUND_RISK",
+    "NO_OPERATIONAL_CAPACITY_OR_SAFETY_CLAIM",
+    "MISSED_EXIT_TAIL_UNVALIDATED",
+    "L1_MAXIMUM_RANGE_IS_CONSERVATIVE_BY_CONSTRUCTION_NOT_VALIDATED"
+  ],
+  "missedExitProbabilities": [
+    0.02,
+    0.05,
+    0.1
+  ],
+  "missedExitMap": {
+    "D2": "E",
+    "E": "G",
+    "G": "END",
+    "END": "END"
+  },
+  "review": "pullrequestreview-5925985825"
+}
